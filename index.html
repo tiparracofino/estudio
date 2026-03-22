@@ -1,1284 +1,1337 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  Camera, History, LayoutGrid, Plus, ChevronLeft,
-  Settings, Eye, Columns, Play, Pause,
-  Mic, Trash2, Volume2, Square, ChevronsLeftRight,
-  AlertTriangle, Feather, Wind, CheckCircle2,
-  Download, Upload
-} from 'lucide-react';
-
-/* ─── IndexedDB ─── */
-var DB_NAME = "EvolveDrawDB_v6";
-var STORE_NAME = "projects";
-var initDB = function() {
-  return new Promise(function(resolve, reject) {
-    try {
-      var r = indexedDB.open(DB_NAME, 1);
-      r.onupgradeneeded = function(e) { 
-        var db = e.target.result; 
-        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "id" }); 
-      };
-      r.onsuccess = function() { resolve(r.result); };
-      r.onerror = function() { reject(r.error); };
-    } catch (e) { reject(e); }
-  });
-};
-
-/* ─── Washi Neumorphic Palette ─── */
-var BG = '#e8e2d9';
-var SD = '#c4bbae';
-var SL = '#faf7f2';
-var SUMI = '#2d2926';
-var HANKO = '#b91c1c';
-var WARM = '#78716c';
-
-/* ─── 二十四節気 (Nijūshi Sekki) — 24 Solar Terms ─── */
-var SEKKI = [
-  { name: '小寒', romaji: 'Shōkan', meaning: 'Pequeño frío', month: 1, day: 5 },
-  { name: '大寒', romaji: 'Daikan', meaning: 'Gran frío', month: 1, day: 20 },
-  { name: '立春', romaji: 'Risshun', meaning: 'Inicio de primavera', month: 2, day: 4 },
-  { name: '雨水', romaji: 'Usui', meaning: 'Agua de lluvia', month: 2, day: 19 },
-  { name: '啓蟄', romaji: 'Keichitsu', meaning: 'Despertar de insectos', month: 3, day: 6 },
-  { name: '春分', romaji: 'Shunbun', meaning: 'Equinoccio de primavera', month: 3, day: 21 },
-  { name: '清明', romaji: 'Seimei', meaning: 'Claridad pura', month: 4, day: 5 },
-  { name: '穀雨', romaji: 'Kokuu', meaning: 'Lluvia de cereales', month: 4, day: 20 },
-  { name: '立夏', romaji: 'Rikka', meaning: 'Inicio de verano', month: 5, day: 6 },
-  { name: '小満', romaji: 'Shōman', meaning: 'Pequeña abundancia', month: 5, day: 21 },
-  { name: '芒種', romaji: 'Bōshu', meaning: 'Semillas con arista', month: 6, day: 6 },
-  { name: '夏至', romaji: 'Geshi', meaning: 'Solsticio de verano', month: 6, day: 21 },
-  { name: '小暑', romaji: 'Shōsho', meaning: 'Pequeño calor', month: 7, day: 7 },
-  { name: '大暑', romaji: 'Taisho', meaning: 'Gran calor', month: 7, day: 23 },
-  { name: '立秋', romaji: 'Risshū', meaning: 'Inicio de otoño', month: 8, day: 7 },
-  { name: '処暑', romaji: 'Shosho', meaning: 'Fin del calor', month: 8, day: 23 },
-  { name: '白露', romaji: 'Hakuro', meaning: 'Rocío blanco', month: 9, day: 8 },
-  { name: '秋分', romaji: 'Shūbun', meaning: 'Equinoccio de otoño', month: 9, day: 23 },
-  { name: '寒露', romaji: 'Kanro', meaning: 'Rocío frío', month: 10, day: 8 },
-  { name: '霜降', romaji: 'Sōkō', meaning: 'Descenso de escarcha', month: 10, day: 23 },
-  { name: '立冬', romaji: 'Rittō', meaning: 'Inicio de invierno', month: 11, day: 7 },
-  { name: '小雪', romaji: 'Shōsetsu', meaning: 'Pequeña nieve', month: 11, day: 22 },
-  { name: '大雪', romaji: 'Taisetsu', meaning: 'Gran nieve', month: 12, day: 7 },
-  { name: '冬至', romaji: 'Tōji', meaning: 'Solsticio de invierno', month: 12, day: 22 },
-];
-
-function getCurrentSekki() {
-  var now = new Date();
-  var m = now.getMonth() + 1;
-  var d = now.getDate();
-  var current = SEKKI[0];
-  for (var i = SEKKI.length - 1; i >= 0; i--) {
-    if (m > SEKKI[i].month || (m === SEKKI[i].month && d >= SEKKI[i].day)) {
-      current = SEKKI[i];
-      break;
-    }
-  }
-  return current;
-}
-
-function getCurrentSeason() {
-  var m = new Date().getMonth();
-  if (m >= 2 && m <= 4) return { jp: '春', name: 'Haru', es: 'Primavera' };
-  if (m >= 5 && m <= 7) return { jp: '夏', name: 'Natsu', es: 'Verano' };
-  if (m >= 8 && m <= 10) return { jp: '秋', name: 'Aki', es: 'Otoño' };
-  return { jp: '冬', name: 'Fuyu', es: 'Invierno' };
-}
-
-/* ─── 守破離 Shu-Ha-Ri Stages ─── */
-var SHU_HA_RI = [
-  { kanji: '守', romaji: 'Shu', meaning: 'Obedecer', desc: 'Sigue la forma. Copia sin juzgar. El ego no dibuja.' },
-  { kanji: '破', romaji: 'Ha', meaning: 'Romper', desc: 'Rompe la regla. Deja que el accidente cree.' },
-  { kanji: '離', romaji: 'Ri', meaning: 'Trascender', desc: 'No hay técnica. El trazo es tú.' },
-];
-
-/* ─── Enso SVG Component ─── */
-function Enso({ size, strokeWidth, color, className, incomplete }) {
-  var s = size || 48;
-  var sw = strokeWidth || 2.5;
-  var c = color || SUMI;
-  var r = (s - sw * 2) / 2;
-  var circ = 2 * Math.PI * r;
-  var dashEnd = incomplete ? circ * 0.15 : 0;
-  return (
-    <svg width={s} height={s} viewBox={'0 0 ' + s + ' ' + s} className={className || ''}>
-      <circle cx={s/2} cy={s/2} r={r} fill="none" stroke={c} strokeWidth={sw}
-        strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={dashEnd}
-        style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }} />
-    </svg>
-  );
-}
-
-/* ─── Breathing Circle (呼吸 Kokyū) ─── */
-function BreathingCircle({ active, onComplete, cycles }) {
-  var totalCycles = cycles || 3;
-  var [phase, setPhase] = useState('idle');
-  var [count, setCount] = useState(0);
-  var [cycleNum, setCycleNum] = useState(0);
-  var intervalRef = useRef(null);
-
-  useEffect(function() {
-    if (!active) {
-      setPhase('idle'); setCount(0); setCycleNum(0);
-      clearInterval(intervalRef.current);
-      return;
-    }
-    setPhase('inhale'); setCount(4); setCycleNum(0);
-    return function() { clearInterval(intervalRef.current); };
-  }, [active]);
-
-  useEffect(function() {
-    if (!active || phase === 'idle') return;
-    clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(function() {
-      setCount(function(prev) {
-        if (prev <= 1) {
-          if (phase === 'inhale') { setPhase('hold'); return 4; }
-          if (phase === 'hold') { setPhase('exhale'); return 6; }
-          if (phase === 'exhale') {
-            setCycleNum(function(cn) {
-              if (cn + 1 >= totalCycles) {
-                setPhase('idle');
-                if (onComplete) onComplete();
-                return cn;
-              }
-              setPhase('inhale');
-              return cn + 1;
-            });
-            return 4;
-          }
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return function() { clearInterval(intervalRef.current); };
-  }, [active, phase, totalCycles, onComplete]);
-
-  var scale = phase === 'inhale' ? 1.3 : phase === 'hold' ? 1.3 : phase === 'exhale' ? 0.85 : 1;
-  var duration = phase === 'inhale' ? '4s' : phase === 'hold' ? '0.3s' : phase === 'exhale' ? '6s' : '0.5s';
-  var phaseLabel = phase === 'inhale' ? '吸う — Inhala' : phase === 'hold' ? '止める — Retén' : phase === 'exhale' ? '吐く — Exhala' : '';
-
-  if (!active && phase === 'idle') return null;
-
-  return (
-    <div className="flex flex-col items-center py-8">
-      <div className="relative flex items-center justify-center" style={{ width: 180, height: 180 }}>
-        <div className="absolute rounded-full" style={{ width: 180, height: 180, background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL }} />
-        <div className="absolute rounded-full" style={{ width: 120, height: 120, background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL, transform: 'scale(' + scale + ')', transition: 'transform ' + duration + ' ease-in-out' }}>
-          <div className="w-full h-full flex items-center justify-center">
-            <Enso size={80} strokeWidth={2} color={SUMI + '40'} incomplete />
-          </div>
-        </div>
-      </div>
-      <p className="mt-5 text-sm font-medium tracking-wider" style={{ color: SUMI, fontFamily: "'Shippori Mincho', serif" }}>{phaseLabel}</p>
-      <p className="mt-1 text-xs" style={{ color: WARM }}>
-        {phase !== 'idle' ? ('Ciclo ' + (cycleNum + 1) + ' / ' + totalCycles) : ''}
-      </p>
-    </div>
-  );
-}
-
-/* ─── Circular Timer with Enso aesthetic ─── */
-function EnsoTimer({ timeLeft, total, size }) {
-  var s = size || 200;
-  var radius = (s - 20) / 2;
-  var circ = 2 * Math.PI * radius;
-  var progress = total > 0 ? ((total - timeLeft) / total) : 1;
-  var offset = circ - progress * circ;
-  var mins = Math.floor(timeLeft / 60);
-  var secs = timeLeft % 60;
-  var done = timeLeft === 0;
-
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: s, height: s }}>
-      <div className="absolute inset-0 rounded-full" style={{ boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL, background: BG }} />
-      <svg className="absolute" width={s} height={s} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={s/2} cy={s/2} r={radius} fill="none" stroke={SD} strokeWidth="2" opacity="0.3" />
-        <circle cx={s/2} cy={s/2} r={radius} fill="none" stroke={done ? '#16a34a' : SUMI} strokeWidth="3" strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }} />
-      </svg>
-      <div className="absolute rounded-full flex flex-col items-center justify-center" style={{ width: s * 0.6, height: s * 0.6, background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL }}>
-        <span className={'tabular-nums tracking-tight ' + (done ? 'text-green-700' : '')} style={{ fontSize: done ? 32 : 28, fontWeight: 800, color: done ? '#16a34a' : SUMI, fontFamily: "'Shippori Mincho', serif" }}>
-          {done ? '無' : mins + ':' + (secs < 10 ? '0' : '') + secs}
-        </span>
-        {!done && <span className="text-[8px] uppercase font-bold mt-1" style={{ color: WARM, letterSpacing: '0.25em' }}>無心 mushin</span>}
-        {done && <span className="text-[9px] font-medium mt-0.5" style={{ color: '#16a34a' }}>completado</span>}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Neumorphic Toggle (washi) ─── */
-function WashiToggle({ on, onToggle, label }) {
-  return (
-    <button onClick={onToggle} className="flex items-center gap-3 select-none" style={{ WebkitTapHighlightColor: 'transparent' }}>
-      <div className="relative rounded-full transition-all duration-300" style={{ width: 52, height: 28, background: BG, boxShadow: on ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
-        <div className="absolute top-1 rounded-full transition-all duration-300" style={{ width: 20, height: 20, left: on ? 28 : 4, background: on ? SUMI : '#b8b0a4', boxShadow: on ? '0 2px 6px rgba(45,41,38,0.3)' : '1px 1px 3px ' + SD }} />
-      </div>
-      {label && <span className="text-[10px] font-bold uppercase" style={{ letterSpacing: '0.15em', color: WARM }}>{label}</span>}
-    </button>
-  );
-}
-
-/* ─── Neumorphic Icon Button (washi) ─── */
-function WashiBtn({ children, onClick, active, danger, disabled, size, className }) {
-  var sz = size || 44;
-  return (
-    <button onClick={onClick} disabled={disabled}
-      className={'rounded-full flex items-center justify-center transition-all duration-150 select-none ' + (disabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-[0.93]') + ' ' + (className || '')}
-      style={{
-        width: sz, height: sz, background: BG,
-        boxShadow: active ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
-        color: danger ? HANKO : active ? SUMI : WARM,
-        WebkitTapHighlightColor: 'transparent',
-      }}>
-      {children}
-    </button>
-  );
-}
-
-/* ─── MAIN APP ─── */
-export default function App() {
-  var [projects, setProjects] = useState([]);
-  var [isDbReady, setIsDbReady] = useState(false);
-  var [view, setView] = useState('gallery');
-  var [selectedProjectId, setSelectedProjectId] = useState(null);
-  var [iterationIndex, setIterationIndex] = useState(0);
-  var [showDeleteModal, setShowDeleteModal] = useState(false);
-  var [showClearAllModal, setShowClearAllModal] = useState(false);
-  var [showShuHaRi, setShowShuHaRi] = useState(false);
-  var [onionSkin, setOnionSkin] = useState(false);
-  var [compareMode, setCompareMode] = useState(false);
-  var [isPlaying, setIsPlaying] = useState(false);
-  var [sliderPos, setSliderPos] = useState(50);
-  var [isDraggingSlider, setIsDraggingSlider] = useState(false);
-  var [pareidoliaMode, setPareidoliaMode] = useState(false);
-  var [isRecording, setIsRecording] = useState(false);
-  var [mediaRecorder, setMediaRecorder] = useState(null);
-  var [tranceTimeLeft, setTranceTimeLeft] = useState(null);
-  var [isTranceActive, setIsTranceActive] = useState(false);
-  var [tranceDuration, setTranceDuration] = useState(60);
-  var [breathingActive, setBreathingActive] = useState(false);
-  var [showHansei, setShowHansei] = useState(false);
-  var [hanseiText, setHanseiText] = useState('');
-  
-  // Hanko Indicator
-  var [hankoMsg, setHankoMsg] = useState({ show: false, kanji: '保存', text: 'GUARDADO' });
-  var saveTimeoutRef = useRef(null);
-
-  var fileInputRef = useRef(null);
-  var importInputRef = useRef(null);
-  var playIntervalRef = useRef(null);
-  var tranceIntervalRef = useRef(null);
-  var audioChunksRef = useRef([]);
-  var sliderContainerRef = useRef(null);
-
-  var [sekki, setSekki] = useState(getCurrentSekki());
-  var [season, setSeason] = useState(getCurrentSeason());
-
-  /* ── Helper: Show Hanko Notification ── */
-  var triggerHanko = function(kanji, text) {
-    setHankoMsg({ show: true, kanji: kanji, text: text });
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(function() {
-      setHankoMsg(prev => ({ ...prev, show: false }));
-    }, 2000);
-  };
-
-  /* ── Auto-update Sekki (Reloj Biológico) ── */
-  useEffect(function() {
-    var timer = setInterval(function() {
-      setSekki(getCurrentSekki());
-      setSeason(getCurrentSeason());
-    }, 60000 * 60); // Comprobar cada hora
-    return function() { clearInterval(timer); };
-  }, []);
-
-  /* ── Limpieza Segura del Micrófono ── */
-  useEffect(function() {
-    return function cleanup() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        if (mediaRecorder.stream) {
-          mediaRecorder.stream.getTracks().forEach(t => t.stop());
-        }
-      }
-    };
-  }, [mediaRecorder]);
-
-  /* ── DB Load ── */
-  useEffect(function() {
-    initDB().then(function(db) {
-      var tx = db.transaction(STORE_NAME, "readonly");
-      var store = tx.objectStore(STORE_NAME);
-      var req = store.getAll();
-      req.onsuccess = function() {
-        if (req.result && req.result.length > 0) setProjects(req.result);
-        setIsDbReady(true);
-      };
-    }).catch(function() { setIsDbReady(true); });
-  }, []);
-
-  /* ── DB Save (Con Indicador Hanko) ── */
-  useEffect(function() {
-    if (isDbReady && projects.length > 0) {
-      initDB().then(function(db) {
-        var tx = db.transaction(STORE_NAME, "readwrite");
-        var store = tx.objectStore(STORE_NAME);
-        store.clear();
-        projects.forEach(function(p) { store.put(p); });
-        
-        tx.oncomplete = function() {
-          triggerHanko('保存', 'GUARDADO');
-        };
-      }).catch(function() {});
-    }
-  }, [projects, isDbReady]);
-
-  var selectedProject = useMemo(function() {
-    return projects.find(function(p) { return p.id === selectedProjectId; });
-  }, [selectedProjectId, projects]);
-
-  /* ── Timelapse ── */
-  useEffect(function() {
-    if (isPlaying && selectedProject && selectedProject.iterations.length > 1) {
-      playIntervalRef.current = setInterval(function() {
-        setIterationIndex(function(prev) { return prev >= selectedProject.iterations.length - 1 ? 0 : prev + 1; });
-      }, 900);
-    } else {
-      if (playIntervalRef.current) clearInterval(playIntervalRef.current);
-      if (selectedProject && selectedProject.iterations && selectedProject.iterations.length <= 1) setIsPlaying(false);
-    }
-    return function() { clearInterval(playIntervalRef.current); };
-  }, [isPlaying, selectedProject]);
-
-  /* ── Trance Timer ── */
-  useEffect(function() {
-    if (isTranceActive && tranceTimeLeft > 0) {
-      tranceIntervalRef.current = setInterval(function() {
-        setTranceTimeLeft(function(prev) { return prev - 1; });
-      }, 1000);
-    } else if (tranceTimeLeft === 0) {
-      clearInterval(tranceIntervalRef.current);
-      setIsTranceActive(false);
-      try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(function() {}); } catch(e) {}
-    }
-    return function() { clearInterval(tranceIntervalRef.current); };
-  }, [isTranceActive, tranceTimeLeft]);
-
-  var startTranceWithBreathing = function(s) {
-    setTranceDuration(s);
-    setBreathingActive(true);
-  };
-  var onBreathingComplete = function() {
-    setBreathingActive(false);
-    setTranceTimeLeft(tranceDuration);
-    setIsTranceActive(true);
-  };
-  var stopTrance = function() {
-    setIsTranceActive(false); setTranceTimeLeft(null); setBreathingActive(false);
-    clearInterval(tranceIntervalRef.current);
-  };
-
-  /* ── Project CRUD ── */
-  var handleCreateProject = function() {
-    var np = {
-      id: Date.now(),
-      title: '作品 ' + (projects.length + 1),
-      stage: 'shu',
-      iterations: [],
-      createdAt: new Date().toLocaleDateString(),
-      sekki: sekki.name,
-      season: season.jp,
-    };
-    setProjects([np].concat(projects));
-    setSelectedProjectId(np.id);
-    setIterationIndex(0);
-    setPareidoliaMode(false);
-    setView('detail');
-  };
-
-  var confirmDeleteProject = function() {
-    setProjects(function(prev) { return prev.filter(function(p) { return p.id !== selectedProjectId; }); });
-    setShowDeleteModal(false); setView('gallery');
-  };
-  
-  var confirmClearAllData = function() { 
-    setProjects([]); 
-    initDB().then(db => {
-      var tx = db.transaction(STORE_NAME, "readwrite");
-      tx.objectStore(STORE_NAME).clear();
-    });
-    setShowClearAllModal(false); setView('gallery'); 
-  };
-
-  /* ── Export / Import Data ── */
-  var handleExportData = function() {
-    try {
-      var dataStr = JSON.stringify(projects);
-      var blob = new Blob([dataStr], { type: 'application/json' });
-      var url = URL.createObjectURL(blob);
-      var link = document.createElement('a');
-      link.href = url;
-      link.download = 'EvolveDraw_Backup_' + new Date().toISOString().slice(0,10) + '.json';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      triggerHanko('出力', 'EXPORTADO');
-    } catch (e) {
-      console.error("Error al exportar:", e);
-    }
-  };
-
-  var handleImportData = function(e) {
-    var file = e.target.files[0];
-    if (!file) return;
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EvolveDraw - Mushin</title>
     
-    var reader = new FileReader();
-    reader.onload = function(event) {
-      try {
-        var importedData = JSON.parse(event.target.result);
-        if (Array.isArray(importedData)) {
-          setProjects(importedData);
-          triggerHanko('復元', 'RESTAURADO');
-          setView('gallery');
-        } else {
-          alert('El archivo no tiene el formato correcto de EvolveDraw.');
+    <!-- Fuentes Japonesas y Elegantes -->
+    <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet" />
+    
+    <!-- Tailwind CSS por CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Babel (Compila React/JSX en vivo en el navegador) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Mapa de Importaciones (Permite usar 'import' en el navegador) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "lucide-react": "https://esm.sh/lucide-react@0.294.0"
+            }
         }
-      } catch (err) {
-        alert('Error al leer el archivo. Asegúrate de que sea un JSON válido.');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = null; // resetear input
-  };
+    </script>
 
-  var handleSelectProject = function(project) {
-    setSelectedProjectId(project.id);
-    setIterationIndex(Math.max(0, project.iterations.length - 1));
-    setIsPlaying(false); setCompareMode(false); setPareidoliaMode(false); setView('detail');
-  };
-
-  /* ── Add Iteration ── */
-  var handleAddIteration = function(e) {
-    var file = e.target.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    
-    reader.onload = function(event) {
-      var targetProject = projects.find(function(p) { return p.id === selectedProjectId; });
-      if (!targetProject) return;
-
-      var newIndex = targetProject.iterations.length;
-
-      var nuevaIteracion = {
-        id: Date.now(), 
-        url: event.target.result,
-        note: '第' + (newIndex + 1) + '筆',
-        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        audio: null, 
-        hansei: ''
-      };
-
-      setProjects(function(prevProjects) {
-        return prevProjects.map(function(p) {
-          if (p.id === selectedProjectId) {
-            return {
-              ...p,
-              iterations: p.iterations.concat([nuevaIteracion])
-            };
-          }
-          return p;
-        });
-      });
-      
-      setIterationIndex(newIndex);
-      if (isTranceActive) stopTrance();
-    };
-    
-    reader.readAsDataURL(file);
-    e.target.value = null;
-  };
-
-  /* ── Audio ── */
-  var startRecording = function() {
-    if (!selectedProject || selectedProject.iterations.length === 0) return;
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
-      var recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = function(e) { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      recorder.onstop = function() {
-        var blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        var r2 = new FileReader();
-        r2.readAsDataURL(blob);
-        r2.onloadend = function() { saveAudioToIteration(r2.result); };
-        stream.getTracks().forEach(function(t) { t.stop(); });
-      };
-      recorder.start(); setMediaRecorder(recorder); setIsRecording(true);
-    }).catch(function() {});
-  };
-  
-  var stopRecording = function() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') { 
-      mediaRecorder.stop(); 
-      setIsRecording(false); 
-    }
-  };
-  
-  var saveAudioToIteration = function(audioData) {
-    setProjects(function(prev) { return prev.map(function(p) {
-      if (p.id === selectedProjectId) {
-        var ni = [].concat(p.iterations);
-        ni[iterationIndex] = { ...ni[iterationIndex], audio: audioData };
-        return { ...p, iterations: ni };
-      }
-      return p;
-    }); });
-  };
-
-  /* ── Save Hansei ── */
-  var saveHansei = function() {
-    setProjects(function(prev) { return prev.map(function(p) {
-      if (p.id === selectedProjectId) {
-        var ni = [].concat(p.iterations);
-        ni[iterationIndex] = { ...ni[iterationIndex], hansei: hanseiText };
-        return { ...p, iterations: ni };
-      }
-      return p;
-    }); });
-    setShowHansei(false);
-  };
-
-  /* ── Slider ── */
-  useEffect(function() {
-    var move = function(e) {
-      if (!isDraggingSlider || !sliderContainerRef.current) return;
-      var rect = sliderContainerRef.current.getBoundingClientRect();
-      var cx = e.touches ? e.touches[0].clientX : e.clientX;
-      var x = Math.max(0, Math.min(cx - rect.left, rect.width));
-      setSliderPos((x / rect.width) * 100);
-    };
-    var end = function() { setIsDraggingSlider(false); };
-    if (isDraggingSlider) {
-      window.addEventListener('mousemove', move);
-      window.addEventListener('touchmove', move, { passive: false });
-      window.addEventListener('mouseup', end);
-      window.addEventListener('touchend', end);
-    }
-    return function() {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('touchmove', move);
-      window.removeEventListener('mouseup', end);
-      window.removeEventListener('touchend', end);
-    };
-  }, [isDraggingSlider]);
-
-  var hasIterations = selectedProject && selectedProject.iterations.length > 0;
-  var canCompare = selectedProject && selectedProject.iterations.length > 1;
-  var totalIterations = projects.reduce(function(a, c) { return a + c.iterations.length; }, 0);
-  var currentStage = selectedProject ? SHU_HA_RI.find(function(s) { return s.romaji.toLowerCase() === (selectedProject.stage || 'shu'); }) || SHU_HA_RI[0] : SHU_HA_RI[0];
-
-  return (
-    <div style={{ background: BG, minHeight: '100vh', color: SUMI }} className="p-5 pb-32 relative">
-      <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet" />
-      <style>{`
+    <!-- Estilos Globales -->
+    <style>
         * { -webkit-tap-highlight-color: transparent; } 
-        body { font-family: 'Noto Sans JP', sans-serif; } 
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #e8e2d9; margin: 0; padding: 0;} 
         .font-mincho { font-family: 'Shippori Mincho', serif; } 
         .neo-scroll::-webkit-scrollbar { display: none; } 
+        
+        /* Estilos del Slider Neumórfico */
         input[type='range'] { -webkit-appearance: none; appearance: none; background: transparent; } 
-        input[type='range']::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background:` + SD + `50; } 
-        input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: ` + BG + `; border: 2px solid ` + SL + `; box-shadow: 2px 2px 5px ` + SD + `, -2px -2px 5px ` + SL + `; margin-top: -10px; cursor: pointer; } 
+        input[type='range']::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: #c4bbae50; } 
+        input[type='range']::-webkit-slider-thumb { 
+            -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; 
+            background: #e8e2d9; border: 2px solid #faf7f2; 
+            box-shadow: 2px 2px 5px #c4bbae, -2px -2px 5px #faf7f2; 
+            margin-top: -10px; cursor: pointer; 
+        } 
         input[type='range']:disabled::-webkit-slider-thumb { opacity: 0.3; cursor: not-allowed; } 
+        
+        /* Animaciones */
         @keyframes pulseRec { 0%,100% { opacity:1 } 50% { opacity:0.4 } } 
         .rec-pulse { animation: pulseRec 1s ease-in-out infinite; } 
         textarea { font-family: 'Shippori Mincho', serif; font-size: 14px; } 
         @keyframes fadeUp { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } } 
         .fade-up { animation: fadeUp 0.5s ease-out; } 
-        @keyframes fadeOutHanko { 0% { opacity: 0; transform: scale(0.8) translateY(-10px); } 10% { opacity: 1; transform: scale(1) translateY(0); } 80% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(0.9) translateY(-5px); } }
+        @keyframes fadeOutHanko { 
+            0% { opacity: 0; transform: scale(0.8) translateY(-10px); } 
+            10% { opacity: 1; transform: scale(1) translateY(0); } 
+            80% { opacity: 1; transform: scale(1) translateY(0); } 
+            100% { opacity: 0; transform: scale(0.9) translateY(-5px); } 
+        }
         .hanko-save { animation: fadeOutHanko 2s ease-in-out forwards; }
-      `}</style>
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-      {/* ─── INDICADOR DE GUARDADO HANKO ─── */}
-      {hankoMsg.show && (
-        <div className="fixed top-6 right-6 z-50 hanko-save pointer-events-none flex flex-col items-center">
-          <div className="flex items-center justify-center rounded-md" style={{ width: 32, height: 32, border: '2px solid ' + HANKO, color: HANKO, background: 'rgba(232, 226, 217, 0.8)', backdropFilter: 'blur(4px)' }}>
-            <span className="font-mincho text-sm font-bold">{hankoMsg.kanji}</span>
-          </div>
-          <span className="text-[8px] font-bold mt-1" style={{ color: HANKO, letterSpacing: '0.1em' }}>{hankoMsg.text}</span>
-        </div>
-      )}
+    <!-- Script Principal de la App -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import {
+            Camera, History, LayoutGrid, Plus, ChevronLeft,
+            Settings, Eye, Columns, Play, Pause,
+            Mic, Trash2, Volume2, Square, ChevronsLeftRight,
+            AlertTriangle, Feather, Wind, CheckCircle2,
+            Download, Upload
+        } from 'lucide-react';
 
-      {/* ─── HEADER ─── */}
-      <header className="flex justify-between items-center mb-6 max-w-lg mx-auto pt-3">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={function() { setView('gallery'); setIsPlaying(false); }}>
-          <div className="rounded-2xl flex items-center justify-center" style={{
-            width: 48, height: 48, background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL,
-          }}>
-            <Enso size={30} strokeWidth={2.5} color={SUMI} incomplete />
-          </div>
-          <div>
-            <h1 className="font-mincho text-lg font-bold tracking-tight leading-none" style={{ color: SUMI }}>
-              無意識 <span className="text-sm font-normal" style={{ color: WARM }}>Muishiki</span>
-            </h1>
-            <p className="text-[9px] font-medium mt-0.5" style={{ color: WARM, letterSpacing: '0.15em' }}>
-              {sekki.name} · {sekki.romaji} — {sekki.meaning}
-            </p>
-          </div>
-        </div>
-        <WashiBtn onClick={handleCreateProject}><Plus size={20} color={SUMI} /></WashiBtn>
-      </header>
+        /* ─── IndexedDB ─── */
+        var DB_NAME = "EvolveDrawDB_v6";
+        var STORE_NAME = "projects";
+        var initDB = function() {
+          return new Promise(function(resolve, reject) {
+            try {
+              var r = indexedDB.open(DB_NAME, 1);
+              r.onupgradeneeded = function(e) { 
+                var db = e.target.result; 
+                if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "id" }); 
+              };
+              r.onsuccess = function() { resolve(r.result); };
+              r.onerror = function() { reject(r.error); };
+            } catch (e) { reject(e); }
+          });
+        };
 
-      <main className="max-w-lg mx-auto">
+        /* ─── Washi Neumorphic Palette ─── */
+        var BG = '#e8e2d9';
+        var SD = '#c4bbae';
+        var SL = '#faf7f2';
+        var SUMI = '#2d2926';
+        var HANKO = '#b91c1c';
+        var WARM = '#78716c';
 
-        {/* ═══ GALLERY ═══ */}
-        {view === 'gallery' && (
-          <div className="space-y-6 fade-up">
-            {/* Season banner */}
-            <div className="rounded-[20px] p-4 flex items-center gap-4" style={{
-              background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
-            }}>
-              <span className="font-mincho text-3xl font-bold" style={{ color: SUMI }}>{season.jp}</span>
-              <div>
-                <p className="text-xs font-medium" style={{ color: SUMI }}>{season.name} — {season.es}</p>
-                <p className="text-[10px]" style={{ color: WARM }}>Los artistas japoneses observan la estación antes de crear</p>
-              </div>
-            </div>
+        /* ─── 二十四節気 (Nijūshi Sekki) — 24 Solar Terms ─── */
+        var SEKKI = [
+          { name: '小寒', romaji: 'Shōkan', meaning: 'Pequeño frío', month: 1, day: 5 },
+          { name: '大寒', romaji: 'Daikan', meaning: 'Gran frío', month: 1, day: 20 },
+          { name: '立春', romaji: 'Risshun', meaning: 'Inicio de primavera', month: 2, day: 4 },
+          { name: '雨水', romaji: 'Usui', meaning: 'Agua de lluvia', month: 2, day: 19 },
+          { name: '啓蟄', romaji: 'Keichitsu', meaning: 'Despertar de insectos', month: 3, day: 6 },
+          { name: '春分', romaji: 'Shunbun', meaning: 'Equinoccio de primavera', month: 3, day: 21 },
+          { name: '清明', romaji: 'Seimei', meaning: 'Claridad pura', month: 4, day: 5 },
+          { name: '穀雨', romaji: 'Kokuu', meaning: 'Lluvia de cereales', month: 4, day: 20 },
+          { name: '立夏', romaji: 'Rikka', meaning: 'Inicio de verano', month: 5, day: 6 },
+          { name: '小満', romaji: 'Shōman', meaning: 'Pequeña abundancia', month: 5, day: 21 },
+          { name: '芒種', romaji: 'Bōshu', meaning: 'Semillas con arista', month: 6, day: 6 },
+          { name: '夏至', romaji: 'Geshi', meaning: 'Solsticio de verano', month: 6, day: 21 },
+          { name: '小暑', romaji: 'Shōsho', meaning: 'Pequeño calor', month: 7, day: 7 },
+          { name: '大暑', romaji: 'Taisho', meaning: 'Gran calor', month: 7, day: 23 },
+          { name: '立秋', romaji: 'Risshū', meaning: 'Inicio de otoño', month: 8, day: 7 },
+          { name: '処暑', romaji: 'Shosho', meaning: 'Fin del calor', month: 8, day: 23 },
+          { name: '白露', romaji: 'Hakuro', meaning: 'Rocío blanco', month: 9, day: 8 },
+          { name: '秋分', romaji: 'Shūbun', meaning: 'Equinoccio de otoño', month: 9, day: 23 },
+          { name: '寒露', romaji: 'Kanro', meaning: 'Rocío frío', month: 10, day: 8 },
+          { name: '霜降', romaji: 'Sōkō', meaning: 'Descenso de escarcha', month: 10, day: 23 },
+          { name: '立冬', romaji: 'Rittō', meaning: 'Inicio de invierno', month: 11, day: 7 },
+          { name: '小雪', romaji: 'Shōsetsu', meaning: 'Pequeña nieve', month: 11, day: 22 },
+          { name: '大雪', romaji: 'Taisetsu', meaning: 'Gran nieve', month: 12, day: 7 },
+          { name: '冬至', romaji: 'Tōji', meaning: 'Solsticio de invierno', month: 12, day: 22 },
+        ];
 
-            {projects.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 opacity-60">
-                <Enso size={72} strokeWidth={2} color={SUMI + '30'} incomplete />
-                <p className="font-mincho text-sm mt-6" style={{ color: WARM }}>El círculo espera ser trazado</p>
-                <p className="text-[11px] mt-1" style={{ color: WARM }}>一期一会 — Cada trazo es irrepetible</p>
-              </div>
-            ) : (
-              projects.map(function(project) {
-                var stg = SHU_HA_RI.find(function(s) { return s.romaji.toLowerCase() === (project.stage || 'shu'); }) || SHU_HA_RI[0];
-                return (
-                  <div key={project.id} onClick={function() { handleSelectProject(project); }}
-                    className="rounded-[24px] p-4 cursor-pointer transition-transform duration-200 hover:scale-[1.005]"
-                    style={{ background: BG, boxShadow: '5px 5px 10px ' + SD + ', -5px -5px 10px ' + SL }}>
-                    <div className="relative rounded-[18px] overflow-hidden mb-4 flex items-center justify-center"
-                      style={{
-                        aspectRatio: '16/10',
-                        background: project.iterations.length > 0 ? '#d6d0c7' : BG,
-                        boxShadow: project.iterations.length === 0 ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : 'none',
-                      }}>
-                      {project.iterations.length > 0 ? (
-                        <>
-                          <img src={project.iterations[project.iterations.length - 1].url} className="w-full h-full object-cover" alt="" />
-                          <div className="absolute bottom-3 right-3 px-3 py-1 rounded-full text-[9px] font-bold" style={{
-                            letterSpacing: '0.1em', background: 'rgba(45,41,38,0.55)', backdropFilter: 'blur(8px)', color: '#faf7f2',
-                          }}>
-                            {project.iterations.length} {project.iterations.length === 1 ? 'trazo' : 'trazos'}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center">
-                          <Enso size={40} strokeWidth={1.5} color={SD} incomplete />
-                          <span className="text-[9px] font-medium mt-2" style={{ color: WARM, letterSpacing: '0.15em' }}>空白 · Vacío</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="px-1 flex justify-between items-end">
-                      <div>
-                        <h3 className="font-mincho text-base font-bold" style={{ color: SUMI }}>{project.title}</h3>
-                        <p className="text-[10px] mt-0.5" style={{ color: WARM }}>{project.createdAt} · {project.sekki || sekki.name}</p>
-                      </div>
-                      {/* Hanko-style stage badge */}
-                      <div className="flex items-center justify-center rounded-lg" style={{
-                        width: 36, height: 36, border: '2px solid ' + HANKO, color: HANKO,
-                      }}>
-                        <span className="font-mincho text-base font-bold">{stg.kanji}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
+        function getCurrentSekki() {
+          var now = new Date();
+          var m = now.getMonth() + 1;
+          var d = now.getDate();
+          var current = SEKKI[0];
+          for (var i = SEKKI.length - 1; i >= 0; i--) {
+            if (m > SEKKI[i].month || (m === SEKKI[i].month && d >= SEKKI[i].day)) {
+              current = SEKKI[i];
+              break;
+            }
+          }
+          return current;
+        }
 
-        {/* ═══ DETAIL ═══ */}
-        {view === 'detail' && selectedProject && (
-          <div className="space-y-5 fade-up">
-            {/* Top nav */}
-            <div className="flex justify-between items-center">
-              <WashiBtn onClick={function() { setView('gallery'); setIsPlaying(false); stopTrance(); }}>
-                <ChevronLeft size={18} />
-              </WashiBtn>
-              <div className="flex items-center gap-3">
-                {hasIterations && !compareMode && (
-                  <WashiBtn onClick={function() { setPareidoliaMode(!pareidoliaMode); }} active={pareidoliaMode}>
-                    <Eye size={18} />
-                  </WashiBtn>
-                )}
-                {canCompare && (
-                  <>
-                    <WashiBtn onClick={function() { setIsPlaying(!isPlaying); }} active={isPlaying}>
-                      {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                    </WashiBtn>
-                    <WashiBtn onClick={function() { setCompareMode(!compareMode); setIsPlaying(false); setPareidoliaMode(false); }} active={compareMode}>
-                      <Columns size={18} />
-                    </WashiBtn>
-                  </>
-                )}
-                <WashiBtn onClick={function() { setShowDeleteModal(true); }} danger>
-                  <Trash2 size={16} />
-                </WashiBtn>
-              </div>
-            </div>
+        function getCurrentSeason() {
+          var m = new Date().getMonth();
+          if (m >= 2 && m <= 4) return { jp: '春', name: 'Haru', es: 'Primavera' };
+          if (m >= 5 && m <= 7) return { jp: '夏', name: 'Natsu', es: 'Verano' };
+          if (m >= 8 && m <= 10) return { jp: '秋', name: 'Aki', es: 'Otoño' };
+          return { jp: '冬', name: 'Fuyu', es: 'Invierno' };
+        }
 
-            {/* Shu-Ha-Ri indicator */}
-            <div className="flex items-center gap-3 px-1">
-              <div className="flex items-center justify-center rounded-lg" style={{
-                width: 32, height: 32, border: '2px solid ' + HANKO, color: HANKO,
-              }}>
-                <span className="font-mincho text-sm font-bold">{currentStage.kanji}</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-bold" style={{ color: SUMI }}>{currentStage.romaji} — {currentStage.meaning}</p>
-                <p className="text-[10px]" style={{ color: WARM }}>{currentStage.desc}</p>
-              </div>
-              <WashiBtn onClick={function() { setShowShuHaRi(true); }} size={36}>
-                <Feather size={14} />
-              </WashiBtn>
-            </div>
+        /* ─── 守破離 Shu-Ha-Ri Stages ─── */
+        var SHU_HA_RI = [
+          { kanji: '守', romaji: 'Shu', meaning: 'Obedecer', desc: 'Sigue la forma. Copia sin juzgar. El ego no dibuja.' },
+          { kanji: '破', romaji: 'Ha', meaning: 'Romper', desc: 'Rompe la regla. Deja que el accidente cree.' },
+          { kanji: '離', romaji: 'Ri', meaning: 'Trascender', desc: 'No hay técnica. El trazo es tú.' },
+        ];
 
-            {/* ── Breathing / Trance ── */}
-            {breathingActive && (
-              <div className="rounded-[24px] py-4" style={{
-                background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL,
-              }}>
-                <p className="text-center text-[10px] font-bold uppercase mb-2" style={{ color: WARM, letterSpacing: '0.2em' }}>
-                  呼吸 · Kokyū — Preparación
-                </p>
-                <BreathingCircle active={breathingActive} onComplete={onBreathingComplete} cycles={3} />
-                <div className="text-center">
-                  <button onClick={stopTrance} className="text-[10px] font-medium" style={{ color: HANKO }}>Cancelar</button>
-                </div>
-              </div>
-            )}
-
-            {(isTranceActive || tranceTimeLeft === 0) && !breathingActive && (
-              <div className="flex flex-col items-center py-6 rounded-[24px]" style={{
-                background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL,
-              }}>
-                <EnsoTimer timeLeft={tranceTimeLeft || 0} total={tranceDuration} size={180} />
-                <p className="text-[10px] font-medium mt-4 mb-5 text-center px-8 font-mincho" style={{ color: WARM }}>
-                  {tranceTimeLeft > 0 ? '手を動かせ。心を止めろ。— Mueve la mano. Detén la mente.' : '筆を置け。— Suelta el pincel. Observa.'}
-                </p>
-                <div className="flex gap-3 px-8 w-full">
-                  <button onClick={stopTrance} className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                    style={{ letterSpacing: '0.1em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: HANKO }}>
-                    Cancelar
-                  </button>
-                  {tranceTimeLeft === 0 && (
-                    <button onClick={function() { fileInputRef.current.click(); }}
-                      className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                      style={{ letterSpacing: '0.1em', background: SUMI, color: '#faf7f2', boxShadow: '0 4px 12px rgba(45,41,38,0.25)' }}>
-                      Capturar 撮る
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── Main viewer ── */}
-            <div className="rounded-[28px] p-4" style={{
-              background: BG, boxShadow: '5px 5px 12px ' + SD + ', -5px -5px 12px ' + SL,
-            }}>
-              {!hasIterations ? (
-                <div className="rounded-[20px] flex flex-col items-center justify-center p-8 text-center"
-                  style={{ aspectRatio: '4/5', background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL }}>
-
-                  <div className="rounded-full flex items-center justify-center mb-2" style={{
-                    width: 80, height: 80, background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-                  }}>
-                    <div className="rounded-full flex items-center justify-center" style={{
-                      width: 56, height: 56, background: BG, boxShadow: 'inset 2px 2px 5px ' + SD + ', inset -2px -2px 5px ' + SL,
-                    }}>
-                      <Wind size={22} color={SUMI} />
-                    </div>
-                  </div>
-
-                  <h3 className="font-mincho text-base font-bold mt-4 mb-1" style={{ color: SUMI }}>準備 · Junbi</h3>
-                  <p className="text-xs mb-1" style={{ color: WARM }}>Preparación</p>
-                  <p className="text-[11px] leading-relaxed max-w-[240px] mb-6" style={{ color: WARM }}>
-                    Respira. Coge pincel y papel. La respiración 呼吸 precede al trazo, como enseñan los maestros de sumi-e.
-                  </p>
-
-                  <div className="flex gap-3 w-full max-w-[260px]">
-                    <button onClick={function() { startTranceWithBreathing(60); }}
-                      className="flex-1 py-4 rounded-2xl flex flex-col items-center active:scale-95 transition-transform"
-                      style={{ background: SUMI, color: '#faf7f2', boxShadow: '0 4px 12px rgba(45,41,38,0.2)' }}>
-                      <span className="text-[9px] uppercase font-medium opacity-70" style={{ letterSpacing: '0.2em' }}>無心</span>
-                      <span className="text-xl font-bold font-mincho mt-0.5">60秒</span>
-                    </button>
-                    <button onClick={function() { startTranceWithBreathing(30); }}
-                      className="flex-1 py-4 rounded-2xl flex flex-col items-center active:scale-95 transition-transform"
-                      style={{ background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL, color: SUMI }}>
-                      <span className="text-[9px] uppercase font-medium opacity-50" style={{ letterSpacing: '0.2em' }}>無心</span>
-                      <span className="text-xl font-bold font-mincho mt-0.5">30秒</span>
-                    </button>
-                  </div>
-
-                  <button onClick={function() { fileInputRef.current.click(); }}
-                    className="mt-6 text-[10px] font-medium hover:opacity-80 transition-opacity"
-                    style={{ color: WARM, textDecoration: 'underline', textUnderlineOffset: '4px' }}>
-                    Subir foto directamente
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div ref={sliderContainerRef}
-                    className={'relative rounded-[20px] overflow-hidden ' + (compareMode ? 'cursor-ew-resize' : '')}
-                    style={{ aspectRatio: '4/5', background: '#d6d0c7', boxShadow: 'inset 2px 2px 6px rgba(0,0,0,0.06)' }}
-                    onMouseDown={function() { if (compareMode) setIsDraggingSlider(true); }}
-                    onTouchStart={function() { if (compareMode) setIsDraggingSlider(true); }}>
-                    {compareMode ? (
-                      <>
-                        <img src={selectedProject.iterations[iterationIndex].url} className="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="" />
-                        <img src={selectedProject.iterations[0].url}
-                          className="absolute inset-0 w-full h-full object-cover grayscale opacity-90 pointer-events-none"
-                          style={{ clipPath: 'inset(0 ' + (100 - sliderPos) + '% 0 0)' }} alt="" />
-                        <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{
-                          left: sliderPos + '%', background: '#faf7f2', boxShadow: '0 0 8px rgba(0,0,0,0.3)',
-                        }}>
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center"
-                            style={{ width: 32, height: 32, background: '#faf7f2', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
-                            <ChevronsLeftRight size={14} color={SUMI} />
-                          </div>
-                        </div>
-                        <div className="absolute top-3 left-3 px-3 py-1 rounded-full text-[8px] font-bold font-mincho"
-                          style={{ letterSpacing: '0.15em', background: 'rgba(45,41,38,0.5)', backdropFilter: 'blur(8px)', color: '#faf7f2' }}>混沌 Caos</div>
-                        <div className="absolute top-3 right-3 px-3 py-1 rounded-full text-[8px] font-bold font-mincho"
-                          style={{ letterSpacing: '0.15em', background: 'rgba(185,28,28,0.6)', backdropFilter: 'blur(8px)', color: '#faf7f2' }}>形 Forma</div>
-                      </>
-                    ) : (
-                      <>
-                        {onionSkin && iterationIndex > 0 && (
-                          <img src={selectedProject.iterations[iterationIndex - 1].url}
-                            className="absolute inset-0 w-full h-full object-cover opacity-25 grayscale" style={{ mixBlendMode: 'multiply' }} alt="" />
-                        )}
-                        <img src={selectedProject.iterations[iterationIndex].url}
-                          className="w-full h-full object-cover transition-all duration-500"
-                          style={pareidoliaMode ? { filter: 'contrast(1.8) saturate(0) brightness(0.9) sepia(0.3)' } : {}}
-                          alt="" />
-                        
-                        {/* Mejora Estética Pareidolia: Textura SVG procedural */}
-                        {pareidoliaMode && (
-                          <div className="absolute inset-0 opacity-20 pointer-events-none mix-blend-overlay"
-                            style={{
-                               backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")'
-                            }}
-                          />
-                        )}
-
-                        {selectedProject.iterations[iterationIndex].audio && !isRecording && (
-                          <button onClick={function() { new Audio(selectedProject.iterations[iterationIndex].audio).play(); }}
-                            className="absolute top-4 right-4 rounded-full flex items-center justify-center transition-transform hover:scale-110"
-                            style={{ width: 40, height: 40, background: 'rgba(250,247,242,0.35)', backdropFilter: 'blur(10px)', border: '1px solid rgba(250,247,242,0.4)' }}>
-                            <Volume2 size={16} color={SUMI} />
-                          </button>
-                        )}
-                        {pareidoliaMode && (
-                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-[8px] font-bold font-mincho"
-                            style={{ letterSpacing: '0.2em', background: 'rgba(45,41,38,0.6)', backdropFilter: 'blur(8px)', color: '#faf7f2' }}>
-                            見立て · Pareidolia
-                          </div>
-                        )}
-                        {/* Hansei indicator */}
-                        {selectedProject.iterations[iterationIndex].hansei && (
-                          <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-full text-[8px] font-medium flex items-center gap-1.5"
-                            style={{ background: 'rgba(250,247,242,0.5)', backdropFilter: 'blur(8px)', color: SUMI }}>
-                            <CheckCircle2 size={10} />
-                            反省 · Reflexión guardada
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Timeline */}
-                  <div className="mt-5 px-1 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <WashiToggle on={onionSkin && !compareMode} onToggle={function() { if (!compareMode && iterationIndex > 0) setOnionSkin(!onionSkin); }} label="写し Transparencia" />
-                      <div className="px-3 py-1.5 rounded-full text-[10px] font-bold font-mincho" style={{
-                        background: BG, boxShadow: 'inset 2px 2px 4px ' + SD + ', inset -2px -2px 4px ' + SL, color: SUMI,
-                      }}>
-                        第{iterationIndex + 1}筆 · Trazo {iterationIndex + 1} de {selectedProject.iterations.length}
-                      </div>
-                    </div>
-                    <div className="rounded-full px-3 flex items-center" style={{
-                      height: 40, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
-                    }}>
-                      <input type="range" min="0" max={Math.max(0, selectedProject.iterations.length - 1)}
-                        value={iterationIndex}
-                        onChange={function(e) { setIterationIndex(parseInt(e.target.value)); setIsPlaying(false); }}
-                        disabled={selectedProject.iterations.length <= 1}
-                        className="w-full cursor-pointer disabled:opacity-30" />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* ── Action bar ── */}
-            <div className="rounded-[24px] p-3 flex items-center justify-around" style={{
-              background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-            }}>
-              {/* Capture */}
-              <button onClick={function() { fileInputRef.current.click(); }}
-                className="flex flex-col items-center py-2 px-3 rounded-2xl active:scale-95 transition-all">
-                <div className="rounded-full flex items-center justify-center mb-1.5" style={{
-                  width: 42, height: 42, background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
-                }}>
-                  <Camera size={17} color={SUMI} />
-                </div>
-                <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>撮る Capturar</span>
-              </button>
-
-              {/* Record */}
-              <button onMouseDown={startRecording} onMouseUp={stopRecording}
-                onTouchStart={startRecording} onTouchEnd={stopRecording} onMouseLeave={stopRecording}
-                disabled={!hasIterations}
-                className={'flex flex-col items-center py-2 px-3 rounded-2xl select-none transition-all ' + (!hasIterations ? 'opacity-35' : 'active:scale-95')}>
-                <div className={'rounded-full flex items-center justify-center mb-1.5 ' + (isRecording ? 'rec-pulse' : '')} style={{
-                  width: 42, height: 42, background: BG,
-                  boxShadow: isRecording ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
-                }}>
-                  {isRecording ? <Square size={14} fill={HANKO} color={HANKO} /> : <Mic size={17} color={WARM} />}
-                </div>
-                <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: isRecording ? HANKO : WARM }}>
-                  {isRecording ? '録音中 Grabando' : '声 Voz'}
-                </span>
-              </button>
-
-              {/* Hansei - Reflection */}
-              <button onClick={function() {
-                if (hasIterations) {
-                  setHanseiText(selectedProject.iterations[iterationIndex].hansei || '');
-                  setShowHansei(true);
-                }
-              }} disabled={!hasIterations}
-                className={'flex flex-col items-center py-2 px-3 rounded-2xl transition-all ' + (!hasIterations ? 'opacity-35' : 'active:scale-95')}>
-                <div className="rounded-full flex items-center justify-center mb-1.5" style={{
-                  width: 42, height: 42, background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
-                }}>
-                  <Feather size={17} color={WARM} />
-                </div>
-                <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>反省 Reflexión</span>
-              </button>
-
-              {/* Trance */}
-              <button onClick={function() { if (!isTranceActive && !breathingActive) startTranceWithBreathing(60); }}
-                disabled={isTranceActive || breathingActive}
-                className={'flex flex-col items-center py-2 px-3 rounded-2xl transition-all ' + (isTranceActive || breathingActive ? 'opacity-35' : 'active:scale-95')}>
-                <div className="rounded-full flex items-center justify-center mb-1.5" style={{
-                  width: 42, height: 42, background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
-                }}>
-                  <Wind size={17} color={WARM} />
-                </div>
-                <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>無心 Trance</span>
-              </button>
-            </div>
-
-            <input type="file" ref={fileInputRef} onChange={handleAddIteration} className="hidden" accept="image/*" />
-          </div>
-        )}
-
-        {/* ═══ HISTORY ═══ */}
-        {view === 'history' && (
-          <div className="space-y-6 fade-up">
-            <h2 className="font-mincho text-xl font-bold px-1" style={{ color: SUMI }}>道 · Michi — El Camino</h2>
-
-            <div className="flex gap-4">
-              {[
-                { kanji: '作', val: projects.length, label: 'Obras' },
-                { kanji: '筆', val: totalIterations, label: 'Trazos' },
-              ].map(function(item, i) {
-                return (
-                  <div key={i} className="flex-1 rounded-[22px] py-5 flex flex-col items-center" style={{
-                    background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-                  }}>
-                    <div className="rounded-full flex items-center justify-center mb-3" style={{
-                      width: 44, height: 44, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
-                    }}>
-                      <span className="font-mincho text-lg font-bold" style={{ color: SUMI }}>{item.kanji}</span>
-                    </div>
-                    <span className="text-2xl font-extrabold" style={{ color: SUMI }}>{item.val}</span>
-                    <span className="text-[9px] font-bold uppercase mt-1" style={{ letterSpacing: '0.12em', color: WARM }}>{item.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Shu-Ha-Ri explanation */}
-            <div className="rounded-[22px] p-5" style={{
-              background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-            }}>
-              <h3 className="font-mincho text-sm font-bold mb-4" style={{ color: SUMI }}>守破離 · Shu-Ha-Ri</h3>
-              <p className="text-[11px] mb-4" style={{ color: WARM }}>
-                El sistema japonés de maestría artística. Cada obra progresa a través de tres etapas:
-              </p>
-              {SHU_HA_RI.map(function(s) {
-                return (
-                  <div key={s.romaji} className="flex gap-3 items-start mb-3">
-                    <div className="flex-shrink-0 flex items-center justify-center rounded-lg mt-0.5" style={{
-                      width: 28, height: 28, border: '1.5px solid ' + HANKO, color: HANKO,
-                    }}>
-                      <span className="font-mincho text-sm font-bold">{s.kanji}</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold" style={{ color: SUMI }}>{s.romaji} — {s.meaning}</p>
-                      <p className="text-[11px]" style={{ color: WARM }}>{s.desc}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Japanese art practices */}
-            <div className="rounded-[22px] p-5" style={{
-              background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-            }}>
-              <h3 className="font-mincho text-sm font-bold mb-3" style={{ color: SUMI }}>Práctica artística japonesa</h3>
-              <div className="space-y-3 text-[11px]" style={{ color: WARM }}>
-                <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>一</span><span><b style={{ color: SUMI }}>呼吸 Kokyū</b> — La respiración precede al trazo. Los calígrafos inhalan antes de cada pincelada.</span></div>
-                <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>二</span><span><b style={{ color: SUMI }}>無心 Mushin</b> — Mente vacía. El estado de no-pensamiento que permite que la mano se mueva sola.</span></div>
-                <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>三</span><span><b style={{ color: SUMI }}>見立て Mitate</b> — Ver lo que no está. El filtro de pareidolia recrea esta técnica de "ver doble".</span></div>
-                <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>四</span><span><b style={{ color: SUMI }}>反省 Hansei</b> — Reflexión honesta post-sesión. Esencial en todos los talleres japoneses.</span></div>
-                <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>五</span><span><b style={{ color: SUMI }}>一期一会 Ichigo Ichie</b> — Cada trazo ocurre una sola vez. No borres, acepta.</span></div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ═══ SETTINGS ═══ */}
-        {view === 'settings' && (
-          <div className="space-y-6 fade-up">
-            <h2 className="font-mincho text-xl font-bold px-1" style={{ color: SUMI }}>設定 · Ajustes</h2>
-
-            {/* Data Migration (Import/Export) */}
-            <div className="rounded-[22px] p-5" style={{
-              background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-            }}>
-              <h3 className="font-mincho font-bold text-sm mb-4" style={{ color: SUMI }}>データ移行 · Migración de Datos</h3>
-              
-              <div className="space-y-4">
-                {/* ── IMPORTAR PRIMERO ── */}
-                <button onClick={function() { importInputRef.current.click(); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl active:scale-[0.98] transition-all"
-                  style={{ background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-full flex items-center justify-center" style={{ width: 36, height: 36, background: SUMI }}>
-                      <Upload size={16} color="#faf7f2" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-bold" style={{ color: SUMI }}>読み込み Importar</p>
-                      <p className="text-[10px]" style={{ color: WARM }}>Cargar desde archivo local</p>
-                    </div>
-                  </div>
-                </button>
-                <input type="file" accept=".json" ref={importInputRef} onChange={handleImportData} className="hidden" />
-
-                {/* ── EXPORTAR SEGUNDO ── */}
-                <button onClick={handleExportData}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl active:scale-[0.98] transition-all"
-                  style={{ background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-full flex items-center justify-center" style={{ width: 36, height: 36, background: BG, boxShadow: 'inset 2px 2px 4px ' + SD + ', inset -2px -2px 4px ' + SL }}>
-                      <Download size={16} color={SUMI} />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-bold" style={{ color: SUMI }}>書き出し Exportar</p>
-                      <p className="text-[10px]" style={{ color: WARM }}>Guardar copia de seguridad</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Clear Data */}
-            <div className="rounded-[22px] p-5" style={{
-              background: BG, boxShadow: 'inset 3px 3px 8px ' + SD + ', inset -3px -3px 8px ' + SL,
-            }}>
-              <h3 className="font-bold text-sm mb-2 flex items-center gap-2" style={{ color: HANKO }}>
-                <AlertTriangle size={16} /> 全消去 · Borrar todo
-              </h3>
-              <p className="text-[11px] mb-5" style={{ color: WARM }}>
-                Elimina todas las obras de forma permanente. Como quemar el papel usado.
-              </p>
-              <button onClick={function() { setShowClearAllModal(true); }}
-                className="w-full py-3.5 rounded-2xl text-[10px] font-bold uppercase active:scale-[0.97] transition-all"
-                style={{ letterSpacing: '0.1em', background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL, color: HANKO }}>
-                Borrar todos los datos
-              </button>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* ─── Bottom Nav ─── */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-[20px] flex items-center justify-around px-6 z-40"
-        style={{ width: '75%', maxWidth: 280, height: 60, background: BG, boxShadow: '8px 8px 18px ' + SD + ', -8px -8px 18px ' + SL }}>
-        {[
-          { v: 'gallery', Icon: LayoutGrid },
-          { v: 'history', Icon: History },
-          { v: 'settings', Icon: Settings },
-        ].map(function(item) {
-          var active = view === item.v;
+        /* ─── Enso SVG Component ─── */
+        function Enso({ size, strokeWidth, color, className, incomplete }) {
+          var s = size || 48;
+          var sw = strokeWidth || 2.5;
+          var c = color || SUMI;
+          var r = (s - sw * 2) / 2;
+          var circ = 2 * Math.PI * r;
+          var dashEnd = incomplete ? circ * 0.15 : 0;
           return (
-            <button key={item.v} onClick={function() { setView(item.v); setIsPlaying(false); setPareidoliaMode(false); }}
-              className="rounded-full flex items-center justify-center transition-all duration-200"
-              style={{
-                width: 40, height: 40, background: BG,
-                boxShadow: active ? 'inset 2px 2px 5px ' + SD + ', inset -2px -2px 5px ' + SL : 'none',
-                color: active ? SUMI : '#b8b0a4',
-              }}>
-              <item.Icon size={18} />
+            <svg width={s} height={s} viewBox={'0 0 ' + s + ' ' + s} className={className || ''}>
+              <circle cx={s/2} cy={s/2} r={r} fill="none" stroke={c} strokeWidth={sw}
+                strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={dashEnd}
+                style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }} />
+            </svg>
+          );
+        }
+
+        /* ─── Breathing Circle (呼吸 Kokyū) ─── */
+        function BreathingCircle({ active, onComplete, cycles }) {
+          var totalCycles = cycles || 3;
+          var [phase, setPhase] = useState('idle');
+          var [count, setCount] = useState(0);
+          var [cycleNum, setCycleNum] = useState(0);
+          var intervalRef = useRef(null);
+
+          useEffect(function() {
+            if (!active) {
+              setPhase('idle'); setCount(0); setCycleNum(0);
+              clearInterval(intervalRef.current);
+              return;
+            }
+            setPhase('inhale'); setCount(4); setCycleNum(0);
+            return function() { clearInterval(intervalRef.current); };
+          }, [active]);
+
+          useEffect(function() {
+            if (!active || phase === 'idle') return;
+            clearInterval(intervalRef.current);
+            intervalRef.current = setInterval(function() {
+              setCount(function(prev) {
+                if (prev <= 1) {
+                  if (phase === 'inhale') { setPhase('hold'); return 4; }
+                  if (phase === 'hold') { setPhase('exhale'); return 6; }
+                  if (phase === 'exhale') {
+                    setCycleNum(function(cn) {
+                      if (cn + 1 >= totalCycles) {
+                        setPhase('idle');
+                        if (onComplete) onComplete();
+                        return cn;
+                      }
+                      setPhase('inhale');
+                      return cn + 1;
+                    });
+                    return 4;
+                  }
+                }
+                return prev - 1;
+              });
+            }, 1000);
+            return function() { clearInterval(intervalRef.current); };
+          }, [active, phase, totalCycles, onComplete]);
+
+          var scale = phase === 'inhale' ? 1.3 : phase === 'hold' ? 1.3 : phase === 'exhale' ? 0.85 : 1;
+          var duration = phase === 'inhale' ? '4s' : phase === 'hold' ? '0.3s' : phase === 'exhale' ? '6s' : '0.5s';
+          var phaseLabel = phase === 'inhale' ? '吸う — Inhala' : phase === 'hold' ? '止める — Retén' : phase === 'exhale' ? '吐く — Exhala' : '';
+
+          if (!active && phase === 'idle') return null;
+
+          return (
+            <div className="flex flex-col items-center py-8">
+              <div className="relative flex items-center justify-center" style={{ width: 180, height: 180 }}>
+                <div className="absolute rounded-full" style={{ width: 180, height: 180, background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL }} />
+                <div className="absolute rounded-full" style={{ width: 120, height: 120, background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL, transform: 'scale(' + scale + ')', transition: 'transform ' + duration + ' ease-in-out' }}>
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Enso size={80} strokeWidth={2} color={SUMI + '40'} incomplete />
+                  </div>
+                </div>
+              </div>
+              <p className="mt-5 text-sm font-medium tracking-wider" style={{ color: SUMI, fontFamily: "'Shippori Mincho', serif" }}>{phaseLabel}</p>
+              <p className="mt-1 text-xs" style={{ color: WARM }}>
+                {phase !== 'idle' ? ('Ciclo ' + (cycleNum + 1) + ' / ' + totalCycles) : ''}
+              </p>
+            </div>
+          );
+        }
+
+        /* ─── Circular Timer with Enso aesthetic ─── */
+        function EnsoTimer({ timeLeft, total, size }) {
+          var s = size || 200;
+          var radius = (s - 20) / 2;
+          var circ = 2 * Math.PI * radius;
+          var progress = total > 0 ? ((total - timeLeft) / total) : 1;
+          var offset = circ - progress * circ;
+          var mins = Math.floor(timeLeft / 60);
+          var secs = timeLeft % 60;
+          var done = timeLeft === 0;
+
+          return (
+            <div className="relative flex items-center justify-center" style={{ width: s, height: s }}>
+              <div className="absolute inset-0 rounded-full" style={{ boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL, background: BG }} />
+              <svg className="absolute" width={s} height={s} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={s/2} cy={s/2} r={radius} fill="none" stroke={SD} strokeWidth="2" opacity="0.3" />
+                <circle cx={s/2} cy={s/2} r={radius} fill="none" stroke={done ? '#16a34a' : SUMI} strokeWidth="3" strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.4s ease, stroke 0.3s ease' }} />
+              </svg>
+              <div className="absolute rounded-full flex flex-col items-center justify-center" style={{ width: s * 0.6, height: s * 0.6, background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL }}>
+                <span className={'tabular-nums tracking-tight ' + (done ? 'text-green-700' : '')} style={{ fontSize: done ? 32 : 28, fontWeight: 800, color: done ? '#16a34a' : SUMI, fontFamily: "'Shippori Mincho', serif" }}>
+                  {done ? '無' : mins + ':' + (secs < 10 ? '0' : '') + secs}
+                </span>
+                {!done && <span className="text-[8px] uppercase font-bold mt-1" style={{ color: WARM, letterSpacing: '0.25em' }}>無心 mushin</span>}
+                {done && <span className="text-[9px] font-medium mt-0.5" style={{ color: '#16a34a' }}>completado</span>}
+              </div>
+            </div>
+          );
+        }
+
+        /* ─── Neumorphic Toggle (washi) ─── */
+        function WashiToggle({ on, onToggle, label }) {
+          return (
+            <button onClick={onToggle} className="flex items-center gap-3 select-none" style={{ WebkitTapHighlightColor: 'transparent' }}>
+              <div className="relative rounded-full transition-all duration-300" style={{ width: 52, height: 28, background: BG, boxShadow: on ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
+                <div className="absolute top-1 rounded-full transition-all duration-300" style={{ width: 20, height: 20, left: on ? 28 : 4, background: on ? SUMI : '#b8b0a4', boxShadow: on ? '0 2px 6px rgba(45,41,38,0.3)' : '1px 1px 3px ' + SD }} />
+              </div>
+              {label && <span className="text-[10px] font-bold uppercase" style={{ letterSpacing: '0.15em', color: WARM }}>{label}</span>}
             </button>
           );
-        })}
-      </nav>
+        }
 
-      {/* ═══ MODALS ═══ */}
+        /* ─── Neumorphic Icon Button (washi) ─── */
+        function WashiBtn({ children, onClick, active, danger, disabled, size, className }) {
+          var sz = size || 44;
+          return (
+            <button onClick={onClick} disabled={disabled}
+              className={'rounded-full flex items-center justify-center transition-all duration-150 select-none ' + (disabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-[0.93]') + ' ' + (className || '')}
+              style={{
+                width: sz, height: sz, background: BG,
+                boxShadow: active ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+                color: danger ? HANKO : active ? SUMI : WARM,
+                WebkitTapHighlightColor: 'transparent',
+              }}>
+              {children}
+            </button>
+          );
+        }
 
-      {/* Delete */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowDeleteModal(false); }}>
-          <div className="w-full max-w-xs p-7 rounded-[28px] text-center" onClick={function(e) { e.stopPropagation(); }}
-            style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
-            <div className="rounded-full mx-auto flex items-center justify-center mb-4" style={{
-              width: 52, height: 52, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
-            }}>
-              <Trash2 size={20} color={HANKO} />
-            </div>
-            <h4 className="font-mincho font-bold mb-1" style={{ color: SUMI }}>¿Eliminar esta obra?</h4>
-            <p className="text-[11px] mb-5" style={{ color: WARM }}>Esta acción es permanente</p>
-            <div className="flex gap-3">
-              <button onClick={function() { setShowDeleteModal(false); }}
-                className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                style={{ letterSpacing: '0.08em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: WARM }}>
-                Cancelar
-              </button>
-              <button onClick={confirmDeleteProject}
-                className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                style={{ letterSpacing: '0.08em', background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL, color: HANKO }}>
-                Borrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        /* ─── MAIN APP ─── */
+        function App() {
+          var [projects, setProjects] = useState([]);
+          var [isDbReady, setIsDbReady] = useState(false);
+          var [view, setView] = useState('gallery');
+          var [selectedProjectId, setSelectedProjectId] = useState(null);
+          var [iterationIndex, setIterationIndex] = useState(0);
+          var [showDeleteModal, setShowDeleteModal] = useState(false);
+          var [showClearAllModal, setShowClearAllModal] = useState(false);
+          var [showShuHaRi, setShowShuHaRi] = useState(false);
+          var [onionSkin, setOnionSkin] = useState(false);
+          var [compareMode, setCompareMode] = useState(false);
+          var [isPlaying, setIsPlaying] = useState(false);
+          var [sliderPos, setSliderPos] = useState(50);
+          var [isDraggingSlider, setIsDraggingSlider] = useState(false);
+          var [pareidoliaMode, setPareidoliaMode] = useState(false);
+          var [isRecording, setIsRecording] = useState(false);
+          var [mediaRecorder, setMediaRecorder] = useState(null);
+          var [tranceTimeLeft, setTranceTimeLeft] = useState(null);
+          var [isTranceActive, setIsTranceActive] = useState(false);
+          var [tranceDuration, setTranceDuration] = useState(60);
+          var [breathingActive, setBreathingActive] = useState(false);
+          var [showHansei, setShowHansei] = useState(false);
+          var [hanseiText, setHanseiText] = useState('');
+          
+          // Hanko Indicator
+          var [hankoMsg, setHankoMsg] = useState({ show: false, kanji: '保存', text: 'GUARDADO' });
+          var saveTimeoutRef = useRef(null);
 
-      {/* Clear All */}
-      {showClearAllModal && (
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowClearAllModal(false); }}>
-          <div className="w-full max-w-xs p-7 rounded-[28px] text-center" onClick={function(e) { e.stopPropagation(); }}
-            style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
-            <div className="rounded-full mx-auto flex items-center justify-center mb-4" style={{
-              width: 52, height: 52, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
-            }}>
-              <AlertTriangle size={20} color={HANKO} />
-            </div>
-            <h4 className="font-mincho font-bold mb-1" style={{ color: SUMI }}>全消去？</h4>
-            <p className="text-[11px] mb-5" style={{ color: WARM }}>Se borrarán todos los proyectos</p>
-            <div className="flex gap-3">
-              <button onClick={function() { setShowClearAllModal(false); }}
-                className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                style={{ letterSpacing: '0.08em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: WARM }}>
-                Cancelar
-              </button>
-              <button onClick={confirmClearAllData}
-                className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                style={{ letterSpacing: '0.08em', background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL, color: HANKO }}>
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          var fileInputRef = useRef(null);
+          var importInputRef = useRef(null);
+          var playIntervalRef = useRef(null);
+          var tranceIntervalRef = useRef(null);
+          var audioChunksRef = useRef([]);
+          var sliderContainerRef = useRef(null);
 
-      {/* Shu-Ha-Ri Picker */}
-      {showShuHaRi && (
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowShuHaRi(false); }}>
-          <div className="w-full max-w-xs p-7 rounded-[28px]" onClick={function(e) { e.stopPropagation(); }}
-            style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
-            <div className="flex flex-col items-center mb-6">
-              <Enso size={40} strokeWidth={2} color={SUMI} incomplete />
-              <h4 className="font-mincho font-bold mt-3" style={{ color: SUMI }}>守破離 · Etapa</h4>
-            </div>
-            <div className="space-y-3">
-              {SHU_HA_RI.map(function(s) {
-                var isActive = selectedProject && selectedProject.stage === s.romaji.toLowerCase();
-                return (
-                  <button key={s.romaji} onClick={function() {
-                    setProjects(function(prev) { return prev.map(function(p) { return p.id === selectedProjectId ? {...p, stage: s.romaji.toLowerCase()} : p; }); });
-                    setShowShuHaRi(false);
-                  }}
-                    className="w-full py-4 px-4 rounded-2xl flex items-center gap-4 transition-all duration-150 active:scale-[0.97]"
-                    style={{
-                      background: BG,
-                      boxShadow: isActive ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+          var [sekki, setSekki] = useState(getCurrentSekki());
+          var [season, setSeason] = useState(getCurrentSeason());
+
+          /* ── Helper: Show Hanko Notification ── */
+          var triggerHanko = function(kanji, text) {
+            setHankoMsg({ show: true, kanji: kanji, text: text });
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = setTimeout(function() {
+              setHankoMsg(prev => ({ ...prev, show: false }));
+            }, 2000);
+          };
+
+          /* ── Auto-update Sekki (Reloj Biológico) ── */
+          useEffect(function() {
+            var timer = setInterval(function() {
+              setSekki(getCurrentSekki());
+              setSeason(getCurrentSeason());
+            }, 60000 * 60); // Comprobar cada hora
+            return function() { clearInterval(timer); };
+          }, []);
+
+          /* ── Limpieza Segura del Micrófono ── */
+          useEffect(function() {
+            return function cleanup() {
+              if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                if (mediaRecorder.stream) {
+                  mediaRecorder.stream.getTracks().forEach(t => t.stop());
+                }
+              }
+            };
+          }, [mediaRecorder]);
+
+          /* ── DB Load ── */
+          useEffect(function() {
+            initDB().then(function(db) {
+              var tx = db.transaction(STORE_NAME, "readonly");
+              var store = tx.objectStore(STORE_NAME);
+              var req = store.getAll();
+              req.onsuccess = function() {
+                if (req.result && req.result.length > 0) setProjects(req.result);
+                setIsDbReady(true);
+              };
+            }).catch(function() { setIsDbReady(true); });
+          }, []);
+
+          /* ── DB Save (Con Indicador Hanko) ── */
+          useEffect(function() {
+            if (isDbReady && projects.length > 0) {
+              initDB().then(function(db) {
+                var tx = db.transaction(STORE_NAME, "readwrite");
+                var store = tx.objectStore(STORE_NAME);
+                store.clear();
+                projects.forEach(function(p) { store.put(p); });
+                
+                tx.oncomplete = function() {
+                  triggerHanko('保存', 'GUARDADO');
+                };
+              }).catch(function() {});
+            }
+          }, [projects, isDbReady]);
+
+          var selectedProject = useMemo(function() {
+            return projects.find(function(p) { return p.id === selectedProjectId; });
+          }, [selectedProjectId, projects]);
+
+          /* ── Timelapse ── */
+          useEffect(function() {
+            if (isPlaying && selectedProject && selectedProject.iterations.length > 1) {
+              playIntervalRef.current = setInterval(function() {
+                setIterationIndex(function(prev) { return prev >= selectedProject.iterations.length - 1 ? 0 : prev + 1; });
+              }, 900);
+            } else {
+              if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+              if (selectedProject && selectedProject.iterations && selectedProject.iterations.length <= 1) setIsPlaying(false);
+            }
+            return function() { clearInterval(playIntervalRef.current); };
+          }, [isPlaying, selectedProject]);
+
+          /* ── Trance Timer ── */
+          useEffect(function() {
+            if (isTranceActive && tranceTimeLeft > 0) {
+              tranceIntervalRef.current = setInterval(function() {
+                setTranceTimeLeft(function(prev) { return prev - 1; });
+              }, 1000);
+            } else if (tranceTimeLeft === 0) {
+              clearInterval(tranceIntervalRef.current);
+              setIsTranceActive(false);
+              try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(function() {}); } catch(e) {}
+            }
+            return function() { clearInterval(tranceIntervalRef.current); };
+          }, [isTranceActive, tranceTimeLeft]);
+
+          var startTranceWithBreathing = function(s) {
+            setTranceDuration(s);
+            setBreathingActive(true);
+          };
+          var onBreathingComplete = function() {
+            setBreathingActive(false);
+            setTranceTimeLeft(tranceDuration);
+            setIsTranceActive(true);
+          };
+          var stopTrance = function() {
+            setIsTranceActive(false); setTranceTimeLeft(null); setBreathingActive(false);
+            clearInterval(tranceIntervalRef.current);
+          };
+
+          /* ── Project CRUD ── */
+          var handleCreateProject = function() {
+            var np = {
+              id: Date.now(),
+              title: '作品 ' + (projects.length + 1),
+              stage: 'shu',
+              iterations: [],
+              createdAt: new Date().toLocaleDateString(),
+              sekki: sekki.name,
+              season: season.jp,
+            };
+            setProjects([np].concat(projects));
+            setSelectedProjectId(np.id);
+            setIterationIndex(0);
+            setPareidoliaMode(false);
+            setView('detail');
+          };
+
+          var confirmDeleteProject = function() {
+            setProjects(function(prev) { return prev.filter(function(p) { return p.id !== selectedProjectId; }); });
+            setShowDeleteModal(false); setView('gallery');
+          };
+          
+          var confirmClearAllData = function() { 
+            setProjects([]); 
+            initDB().then(db => {
+              var tx = db.transaction(STORE_NAME, "readwrite");
+              tx.objectStore(STORE_NAME).clear();
+            });
+            setShowClearAllModal(false); setView('gallery'); 
+          };
+
+          /* ── Export / Import Data ── */
+          var handleExportData = function() {
+            try {
+              var dataStr = JSON.stringify(projects);
+              var blob = new Blob([dataStr], { type: 'application/json' });
+              var url = URL.createObjectURL(blob);
+              var link = document.createElement('a');
+              link.href = url;
+              link.download = 'EvolveDraw_Backup_' + new Date().toISOString().slice(0,10) + '.json';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+              triggerHanko('出力', 'EXPORTADO');
+            } catch (e) {
+              console.error("Error al exportar:", e);
+            }
+          };
+
+          var handleImportData = function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            
+            var reader = new FileReader();
+            reader.onload = function(event) {
+              try {
+                var importedData = JSON.parse(event.target.result);
+                if (Array.isArray(importedData)) {
+                  setProjects(importedData);
+                  triggerHanko('復元', 'RESTAURADO');
+                  setView('gallery');
+                } else {
+                  alert('El archivo no tiene el formato correcto de EvolveDraw.');
+                }
+              } catch (err) {
+                alert('Error al leer el archivo. Asegúrate de que sea un JSON válido.');
+              }
+            };
+            reader.readAsText(file);
+            e.target.value = null; // resetear input
+          };
+
+          var handleSelectProject = function(project) {
+            setSelectedProjectId(project.id);
+            setIterationIndex(Math.max(0, project.iterations.length - 1));
+            setIsPlaying(false); setCompareMode(false); setPareidoliaMode(false); setView('detail');
+          };
+
+          /* ── Add Iteration ── */
+          var handleAddIteration = function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            
+            reader.onload = function(event) {
+              var targetProject = projects.find(function(p) { return p.id === selectedProjectId; });
+              if (!targetProject) return;
+
+              var newIndex = targetProject.iterations.length;
+
+              var nuevaIteracion = {
+                id: Date.now(), 
+                url: event.target.result,
+                note: '第' + (newIndex + 1) + '筆',
+                date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                audio: null, 
+                hansei: ''
+              };
+
+              setProjects(function(prevProjects) {
+                return prevProjects.map(function(p) {
+                  if (p.id === selectedProjectId) {
+                    return {
+                      ...p,
+                      iterations: p.iterations.concat([nuevaIteracion])
+                    };
+                  }
+                  return p;
+                });
+              });
+              
+              setIterationIndex(newIndex);
+              if (isTranceActive) stopTrance();
+            };
+            
+            reader.readAsDataURL(file);
+            e.target.value = null;
+          };
+
+          /* ── Audio ── */
+          var startRecording = function() {
+            if (!selectedProject || selectedProject.iterations.length === 0) return;
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+              var recorder = new MediaRecorder(stream);
+              audioChunksRef.current = [];
+              recorder.ondataavailable = function(e) { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+              recorder.onstop = function() {
+                var blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                var r2 = new FileReader();
+                r2.readAsDataURL(blob);
+                r2.onloadend = function() { saveAudioToIteration(r2.result); };
+                stream.getTracks().forEach(function(t) { t.stop(); });
+              };
+              recorder.start(); setMediaRecorder(recorder); setIsRecording(true);
+            }).catch(function() {});
+          };
+          
+          var stopRecording = function() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') { 
+              mediaRecorder.stop(); 
+              setIsRecording(false); 
+            }
+          };
+          
+          var saveAudioToIteration = function(audioData) {
+            setProjects(function(prev) { return prev.map(function(p) {
+              if (p.id === selectedProjectId) {
+                var ni = [].concat(p.iterations);
+                ni[iterationIndex] = { ...ni[iterationIndex], audio: audioData };
+                return { ...p, iterations: ni };
+              }
+              return p;
+            }); });
+          };
+
+          /* ── Save Hansei ── */
+          var saveHansei = function() {
+            setProjects(function(prev) { return prev.map(function(p) {
+              if (p.id === selectedProjectId) {
+                var ni = [].concat(p.iterations);
+                ni[iterationIndex] = { ...ni[iterationIndex], hansei: hanseiText };
+                return { ...p, iterations: ni };
+              }
+              return p;
+            }); });
+            setShowHansei(false);
+          };
+
+          /* ── Slider ── */
+          useEffect(function() {
+            var move = function(e) {
+              if (!isDraggingSlider || !sliderContainerRef.current) return;
+              var rect = sliderContainerRef.current.getBoundingClientRect();
+              var cx = e.touches ? e.touches[0].clientX : e.clientX;
+              var x = Math.max(0, Math.min(cx - rect.left, rect.width));
+              setSliderPos((x / rect.width) * 100);
+            };
+            var end = function() { setIsDraggingSlider(false); };
+            if (isDraggingSlider) {
+              window.addEventListener('mousemove', move);
+              window.addEventListener('touchmove', move, { passive: false });
+              window.addEventListener('mouseup', end);
+              window.addEventListener('touchend', end);
+            }
+            return function() {
+              window.removeEventListener('mousemove', move);
+              window.removeEventListener('touchmove', move);
+              window.removeEventListener('mouseup', end);
+              window.removeEventListener('touchend', end);
+            };
+          }, [isDraggingSlider]);
+
+          var hasIterations = selectedProject && selectedProject.iterations.length > 0;
+          var canCompare = selectedProject && selectedProject.iterations.length > 1;
+          var totalIterations = projects.reduce(function(a, c) { return a + c.iterations.length; }, 0);
+          var currentStage = selectedProject ? SHU_HA_RI.find(function(s) { return s.romaji.toLowerCase() === (selectedProject.stage || 'shu'); }) || SHU_HA_RI[0] : SHU_HA_RI[0];
+
+          return (
+            <div style={{ background: BG, minHeight: '100vh', color: SUMI }} className="p-5 pb-32 relative">
+              {/* ─── INDICADOR DE GUARDADO HANKO ─── */}
+              {hankoMsg.show && (
+                <div className="fixed top-6 right-6 z-50 hanko-save pointer-events-none flex flex-col items-center">
+                  <div className="flex items-center justify-center rounded-md" style={{ width: 32, height: 32, border: '2px solid ' + HANKO, color: HANKO, background: 'rgba(232, 226, 217, 0.8)', backdropFilter: 'blur(4px)' }}>
+                    <span className="font-mincho text-sm font-bold">{hankoMsg.kanji}</span>
+                  </div>
+                  <span className="text-[8px] font-bold mt-1" style={{ color: HANKO, letterSpacing: '0.1em' }}>{hankoMsg.text}</span>
+                </div>
+              )}
+
+              {/* ─── HEADER ─── */}
+              <header className="flex justify-between items-center mb-6 max-w-lg mx-auto pt-3">
+                <div className="flex items-center gap-3 cursor-pointer" onClick={function() { setView('gallery'); setIsPlaying(false); }}>
+                  <div className="rounded-2xl flex items-center justify-center" style={{
+                    width: 48, height: 48, background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL,
+                  }}>
+                    <Enso size={30} strokeWidth={2.5} color={SUMI} incomplete />
+                  </div>
+                  <div>
+                    <h1 className="font-mincho text-lg font-bold tracking-tight leading-none" style={{ color: SUMI }}>
+                      無意識 <span className="text-sm font-normal" style={{ color: WARM }}>Muishiki</span>
+                    </h1>
+                    <p className="text-[9px] font-medium mt-0.5" style={{ color: WARM, letterSpacing: '0.15em' }}>
+                      {sekki.name} · {sekki.romaji} — {sekki.meaning}
+                    </p>
+                  </div>
+                </div>
+                <WashiBtn onClick={handleCreateProject}><Plus size={20} color={SUMI} /></WashiBtn>
+              </header>
+
+              <main className="max-w-lg mx-auto">
+
+                {/* ═══ GALLERY ═══ */}
+                {view === 'gallery' && (
+                  <div className="space-y-6 fade-up">
+                    {/* Season banner */}
+                    <div className="rounded-[20px] p-4 flex items-center gap-4" style={{
+                      background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
                     }}>
-                    <div className="flex-shrink-0 flex items-center justify-center rounded-lg" style={{
-                      width: 36, height: 36, border: '2px solid ' + (isActive ? HANKO : SD),
-                      color: isActive ? HANKO : WARM,
+                      <span className="font-mincho text-3xl font-bold" style={{ color: SUMI }}>{season.jp}</span>
+                      <div>
+                        <p className="text-xs font-medium" style={{ color: SUMI }}>{season.name} — {season.es}</p>
+                        <p className="text-[10px]" style={{ color: WARM }}>Los artistas japoneses observan la estación antes de crear</p>
+                      </div>
+                    </div>
+
+                    {projects.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 opacity-60">
+                        <Enso size={72} strokeWidth={2} color={SUMI + '30'} incomplete />
+                        <p className="font-mincho text-sm mt-6" style={{ color: WARM }}>El círculo espera ser trazado</p>
+                        <p className="text-[11px] mt-1" style={{ color: WARM }}>一期一会 — Cada trazo es irrepetible</p>
+                      </div>
+                    ) : (
+                      projects.map(function(project) {
+                        var stg = SHU_HA_RI.find(function(s) { return s.romaji.toLowerCase() === (project.stage || 'shu'); }) || SHU_HA_RI[0];
+                        return (
+                          <div key={project.id} onClick={function() { handleSelectProject(project); }}
+                            className="rounded-[24px] p-4 cursor-pointer transition-transform duration-200 hover:scale-[1.005]"
+                            style={{ background: BG, boxShadow: '5px 5px 10px ' + SD + ', -5px -5px 10px ' + SL }}>
+                            <div className="relative rounded-[18px] overflow-hidden mb-4 flex items-center justify-center"
+                              style={{
+                                aspectRatio: '16/10',
+                                background: project.iterations.length > 0 ? '#d6d0c7' : BG,
+                                boxShadow: project.iterations.length === 0 ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : 'none',
+                              }}>
+                              {project.iterations.length > 0 ? (
+                                <>
+                                  <img src={project.iterations[project.iterations.length - 1].url} className="w-full h-full object-cover" alt="" />
+                                  <div className="absolute bottom-3 right-3 px-3 py-1 rounded-full text-[9px] font-bold" style={{
+                                    letterSpacing: '0.1em', background: 'rgba(45,41,38,0.55)', backdropFilter: 'blur(8px)', color: '#faf7f2',
+                                  }}>
+                                    {project.iterations.length} {project.iterations.length === 1 ? 'trazo' : 'trazos'}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex flex-col items-center">
+                                  <Enso size={40} strokeWidth={1.5} color={SD} incomplete />
+                                  <span className="text-[9px] font-medium mt-2" style={{ color: WARM, letterSpacing: '0.15em' }}>空白 · Vacío</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="px-1 flex justify-between items-end">
+                              <div>
+                                <h3 className="font-mincho text-base font-bold" style={{ color: SUMI }}>{project.title}</h3>
+                                <p className="text-[10px] mt-0.5" style={{ color: WARM }}>{project.createdAt} · {project.sekki || sekki.name}</p>
+                              </div>
+                              {/* Hanko-style stage badge */}
+                              <div className="flex items-center justify-center rounded-lg" style={{
+                                width: 36, height: 36, border: '2px solid ' + HANKO, color: HANKO,
+                              }}>
+                                <span className="font-mincho text-base font-bold">{stg.kanji}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* ═══ DETAIL ═══ */}
+                {view === 'detail' && selectedProject && (
+                  <div className="space-y-5 fade-up">
+                    {/* Top nav */}
+                    <div className="flex justify-between items-center">
+                      <WashiBtn onClick={function() { setView('gallery'); setIsPlaying(false); stopTrance(); }}>
+                        <ChevronLeft size={18} />
+                      </WashiBtn>
+                      <div className="flex items-center gap-3">
+                        {hasIterations && !compareMode && (
+                          <WashiBtn onClick={function() { setPareidoliaMode(!pareidoliaMode); }} active={pareidoliaMode}>
+                            <Eye size={18} />
+                          </WashiBtn>
+                        )}
+                        {canCompare && (
+                          <>
+                            <WashiBtn onClick={function() { setIsPlaying(!isPlaying); }} active={isPlaying}>
+                              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                            </WashiBtn>
+                            <WashiBtn onClick={function() { setCompareMode(!compareMode); setIsPlaying(false); setPareidoliaMode(false); }} active={compareMode}>
+                              <Columns size={18} />
+                            </WashiBtn>
+                          </>
+                        )}
+                        <WashiBtn onClick={function() { setShowDeleteModal(true); }} danger>
+                          <Trash2 size={16} />
+                        </WashiBtn>
+                      </div>
+                    </div>
+
+                    {/* Shu-Ha-Ri indicator */}
+                    <div className="flex items-center gap-3 px-1">
+                      <div className="flex items-center justify-center rounded-lg" style={{
+                        width: 32, height: 32, border: '2px solid ' + HANKO, color: HANKO,
+                      }}>
+                        <span className="font-mincho text-sm font-bold">{currentStage.kanji}</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold" style={{ color: SUMI }}>{currentStage.romaji} — {currentStage.meaning}</p>
+                        <p className="text-[10px]" style={{ color: WARM }}>{currentStage.desc}</p>
+                      </div>
+                      <WashiBtn onClick={function() { setShowShuHaRi(true); }} size={36}>
+                        <Feather size={14} />
+                      </WashiBtn>
+                    </div>
+
+                    {/* ── Breathing / Trance ── */}
+                    {breathingActive && (
+                      <div className="rounded-[24px] py-4" style={{
+                        background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL,
+                      }}>
+                        <p className="text-center text-[10px] font-bold uppercase mb-2" style={{ color: WARM, letterSpacing: '0.2em' }}>
+                          呼吸 · Kokyū — Preparación
+                        </p>
+                        <BreathingCircle active={breathingActive} onComplete={onBreathingComplete} cycles={3} />
+                        <div className="text-center">
+                          <button onClick={stopTrance} className="text-[10px] font-medium" style={{ color: HANKO }}>Cancelar</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {(isTranceActive || tranceTimeLeft === 0) && !breathingActive && (
+                      <div className="flex flex-col items-center py-6 rounded-[24px]" style={{
+                        background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL,
+                      }}>
+                        <EnsoTimer timeLeft={tranceTimeLeft || 0} total={tranceDuration} size={180} />
+                        <p className="text-[10px] font-medium mt-4 mb-5 text-center px-8 font-mincho" style={{ color: WARM }}>
+                          {tranceTimeLeft > 0 ? '手を動かせ。心を止めろ。— Mueve la mano. Detén la mente.' : '筆を置け。— Suelta el pincel. Observa.'}
+                        </p>
+                        <div className="flex gap-3 px-8 w-full">
+                          <button onClick={stopTrance} className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                            style={{ letterSpacing: '0.1em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: HANKO }}>
+                            Cancelar
+                          </button>
+                          {tranceTimeLeft === 0 && (
+                            <button onClick={function() { fileInputRef.current.click(); }}
+                              className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                              style={{ letterSpacing: '0.1em', background: SUMI, color: '#faf7f2', boxShadow: '0 4px 12px rgba(45,41,38,0.25)' }}>
+                              Capturar 撮る
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Main viewer ── */}
+                    <div className="rounded-[28px] p-4" style={{
+                      background: BG, boxShadow: '5px 5px 12px ' + SD + ', -5px -5px 12px ' + SL,
                     }}>
-                      <span className="font-mincho text-lg font-bold">{s.kanji}</span>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-bold" style={{ color: isActive ? SUMI : WARM }}>{s.romaji} — {s.meaning}</p>
-                      <p className="text-[10px]" style={{ color: WARM }}>{s.desc}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+                      {!hasIterations ? (
+                        <div className="rounded-[20px] flex flex-col items-center justify-center p-8 text-center"
+                          style={{ aspectRatio: '4/5', background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL }}>
 
-      {/* 反省 Hansei Modal */}
-      {showHansei && (
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowHansei(false); }}>
-          <div className="w-full max-w-xs p-7 rounded-[28px]" onClick={function(e) { e.stopPropagation(); }}
-            style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
-            <div className="flex flex-col items-center mb-5">
-              <Feather size={24} color={SUMI} />
-              <h4 className="font-mincho font-bold mt-2" style={{ color: SUMI }}>反省 · Hansei</h4>
-              <p className="text-[10px] mt-1 text-center" style={{ color: WARM }}>
-                Reflexión honesta sobre este trazo. ¿Qué descubrió tu mano?
-              </p>
-            </div>
-            <div className="rounded-2xl p-3 mb-4" style={{
-              background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
-            }}>
-              <textarea
-                value={hanseiText}
-                onChange={function(e) { setHanseiText(e.target.value); }}
-                placeholder="Escribe tu reflexión..."
-                rows={4}
-                className="w-full bg-transparent resize-none outline-none placeholder-gray-400"
-                style={{ color: SUMI, fontSize: 14 }}
-              />
-            </div>
-            <div className="flex gap-3">
-              <button onClick={function() { setShowHansei(false); }}
-                className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                style={{ letterSpacing: '0.08em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: WARM }}>
-                Cancelar
-              </button>
-              <button onClick={saveHansei}
-                className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
-                style={{ letterSpacing: '0.08em', background: SUMI, color: '#faf7f2', boxShadow: '0 4px 10px rgba(45,41,38,0.2)' }}>
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                          <div className="rounded-full flex items-center justify-center mb-2" style={{
+                            width: 80, height: 80, background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
+                          }}>
+                            <div className="rounded-full flex items-center justify-center" style={{
+                              width: 56, height: 56, background: BG, boxShadow: 'inset 2px 2px 5px ' + SD + ', inset -2px -2px 5px ' + SL,
+                            }}>
+                              <Wind size={22} color={SUMI} />
+                            </div>
+                          </div>
 
+                          <h3 className="font-mincho text-base font-bold mt-4 mb-1" style={{ color: SUMI }}>準備 · Junbi</h3>
+                          <p className="text-xs mb-1" style={{ color: WARM }}>Preparación</p>
+                          <p className="text-[11px] leading-relaxed max-w-[240px] mb-6" style={{ color: WARM }}>
+                            Respira. Coge pincel y papel. La respiración 呼吸 precede al trazo, como enseñan los maestros de sumi-e.
+                          </p>
+
+                          <div className="flex gap-3 w-full max-w-[260px]">
+                            <button onClick={function() { startTranceWithBreathing(60); }}
+                              className="flex-1 py-4 rounded-2xl flex flex-col items-center active:scale-95 transition-transform"
+                              style={{ background: SUMI, color: '#faf7f2', boxShadow: '0 4px 12px rgba(45,41,38,0.2)' }}>
+                              <span className="text-[9px] uppercase font-medium opacity-70" style={{ letterSpacing: '0.2em' }}>無心</span>
+                              <span className="text-xl font-bold font-mincho mt-0.5">60秒</span>
+                            </button>
+                            <button onClick={function() { startTranceWithBreathing(30); }}
+                              className="flex-1 py-4 rounded-2xl flex flex-col items-center active:scale-95 transition-transform"
+                              style={{ background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL, color: SUMI }}>
+                              <span className="text-[9px] uppercase font-medium opacity-50" style={{ letterSpacing: '0.2em' }}>無心</span>
+                              <span className="text-xl font-bold font-mincho mt-0.5">30秒</span>
+                            </button>
+                          </div>
+
+                          <button onClick={function() { fileInputRef.current.click(); }}
+                            className="mt-6 text-[10px] font-medium hover:opacity-80 transition-opacity"
+                            style={{ color: WARM, textDecoration: 'underline', textUnderlineOffset: '4px' }}>
+                            Subir foto directamente
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div ref={sliderContainerRef}
+                            className={'relative rounded-[20px] overflow-hidden ' + (compareMode ? 'cursor-ew-resize' : '')}
+                            style={{ aspectRatio: '4/5', background: '#d6d0c7', boxShadow: 'inset 2px 2px 6px rgba(0,0,0,0.06)' }}
+                            onMouseDown={function() { if (compareMode) setIsDraggingSlider(true); }}
+                            onTouchStart={function() { if (compareMode) setIsDraggingSlider(true); }}>
+                            {compareMode ? (
+                              <>
+                                <img src={selectedProject.iterations[iterationIndex].url} className="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="" />
+                                <img src={selectedProject.iterations[0].url}
+                                  className="absolute inset-0 w-full h-full object-cover grayscale opacity-90 pointer-events-none"
+                                  style={{ clipPath: 'inset(0 ' + (100 - sliderPos) + '% 0 0)' }} alt="" />
+                                <div className="absolute top-0 bottom-0 w-0.5 z-10" style={{
+                                  left: sliderPos + '%', background: '#faf7f2', boxShadow: '0 0 8px rgba(0,0,0,0.3)',
+                                }}>
+                                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center"
+                                    style={{ width: 32, height: 32, background: '#faf7f2', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
+                                    <ChevronsLeftRight size={14} color={SUMI} />
+                                  </div>
+                                </div>
+                                <div className="absolute top-3 left-3 px-3 py-1 rounded-full text-[8px] font-bold font-mincho"
+                                  style={{ letterSpacing: '0.15em', background: 'rgba(45,41,38,0.5)', backdropFilter: 'blur(8px)', color: '#faf7f2' }}>混沌 Caos</div>
+                                <div className="absolute top-3 right-3 px-3 py-1 rounded-full text-[8px] font-bold font-mincho"
+                                  style={{ letterSpacing: '0.15em', background: 'rgba(185,28,28,0.6)', backdropFilter: 'blur(8px)', color: '#faf7f2' }}>形 Forma</div>
+                              </>
+                            ) : (
+                              <>
+                                {onionSkin && iterationIndex > 0 && (
+                                  <img src={selectedProject.iterations[iterationIndex - 1].url}
+                                    className="absolute inset-0 w-full h-full object-cover opacity-25 grayscale" style={{ mixBlendMode: 'multiply' }} alt="" />
+                                )}
+                                <img src={selectedProject.iterations[iterationIndex].url}
+                                  className="w-full h-full object-cover transition-all duration-500"
+                                  style={pareidoliaMode ? { filter: 'contrast(1.8) saturate(0) brightness(0.9) sepia(0.3)' } : {}}
+                                  alt="" />
+                                
+                                {/* Mejora Estética Pareidolia */}
+                                {pareidoliaMode && (
+                                  <div className="absolute inset-0 opacity-20 pointer-events-none mix-blend-overlay"
+                                    style={{
+                                       backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")'
+                                    }}
+                                  />
+                                )}
+
+                                {selectedProject.iterations[iterationIndex].audio && !isRecording && (
+                                  <button onClick={function() { new Audio(selectedProject.iterations[iterationIndex].audio).play(); }}
+                                    className="absolute top-4 right-4 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                                    style={{ width: 40, height: 40, background: 'rgba(250,247,242,0.35)', backdropFilter: 'blur(10px)', border: '1px solid rgba(250,247,242,0.4)' }}>
+                                    <Volume2 size={16} color={SUMI} />
+                                  </button>
+                                )}
+                                {pareidoliaMode && (
+                                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-[8px] font-bold font-mincho"
+                                    style={{ letterSpacing: '0.2em', background: 'rgba(45,41,38,0.6)', backdropFilter: 'blur(8px)', color: '#faf7f2' }}>
+                                    見立て · Pareidolia
+                                  </div>
+                                )}
+                                {/* Hansei indicator */}
+                                {selectedProject.iterations[iterationIndex].hansei && (
+                                  <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-full text-[8px] font-medium flex items-center gap-1.5"
+                                    style={{ background: 'rgba(250,247,242,0.5)', backdropFilter: 'blur(8px)', color: SUMI }}>
+                                    <CheckCircle2 size={10} />
+                                    反省 · Reflexión
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+
+                          {/* Timeline */}
+                          <div className="mt-5 px-1 space-y-4">
+                            <div className="flex justify-between items-center">
+                              <WashiToggle on={onionSkin && !compareMode} onToggle={function() { if (!compareMode && iterationIndex > 0) setOnionSkin(!onionSkin); }} label="写し Transparencia" />
+                              <div className="px-3 py-1.5 rounded-full text-[10px] font-bold font-mincho" style={{
+                                background: BG, boxShadow: 'inset 2px 2px 4px ' + SD + ', inset -2px -2px 4px ' + SL, color: SUMI,
+                              }}>
+                                第{iterationIndex + 1}筆 · Trazo {iterationIndex + 1} de {selectedProject.iterations.length}
+                              </div>
+                            </div>
+                            <div className="rounded-full px-3 flex items-center" style={{
+                              height: 40, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
+                            }}>
+                              <input type="range" min="0" max={Math.max(0, selectedProject.iterations.length - 1)}
+                                value={iterationIndex}
+                                onChange={function(e) { setIterationIndex(parseInt(e.target.value)); setIsPlaying(false); }}
+                                disabled={selectedProject.iterations.length <= 1}
+                                className="w-full cursor-pointer disabled:opacity-30" />
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* ── Action bar ── */}
+                    <div className="rounded-[24px] p-3 flex items-center justify-around" style={{
+                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
+                    }}>
+                      {/* Capture */}
+                      <button onClick={function() { fileInputRef.current.click(); }}
+                        className="flex flex-col items-center py-2 px-3 rounded-2xl active:scale-95 transition-all">
+                        <div className="rounded-full flex items-center justify-center mb-1.5" style={{
+                          width: 42, height: 42, background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+                        }}>
+                          <Camera size={17} color={SUMI} />
+                        </div>
+                        <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>撮る Capturar</span>
+                      </button>
+
+                      {/* Record */}
+                      <button onMouseDown={startRecording} onMouseUp={stopRecording}
+                        onTouchStart={startRecording} onTouchEnd={stopRecording} onMouseLeave={stopRecording}
+                        disabled={!hasIterations}
+                        className={'flex flex-col items-center py-2 px-3 rounded-2xl select-none transition-all ' + (!hasIterations ? 'opacity-35' : 'active:scale-95')}>
+                        <div className={'rounded-full flex items-center justify-center mb-1.5 ' + (isRecording ? 'rec-pulse' : '')} style={{
+                          width: 42, height: 42, background: BG,
+                          boxShadow: isRecording ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+                        }}>
+                          {isRecording ? <Square size={14} fill={HANKO} color={HANKO} /> : <Mic size={17} color={WARM} />}
+                        </div>
+                        <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: isRecording ? HANKO : WARM }}>
+                          {isRecording ? '録音中 Grabando' : '声 Voz'}
+                        </span>
+                      </button>
+
+                      {/* Hansei - Reflection */}
+                      <button onClick={function() {
+                        if (hasIterations) {
+                          setHanseiText(selectedProject.iterations[iterationIndex].hansei || '');
+                          setShowHansei(true);
+                        }
+                      }} disabled={!hasIterations}
+                        className={'flex flex-col items-center py-2 px-3 rounded-2xl transition-all ' + (!hasIterations ? 'opacity-35' : 'active:scale-95')}>
+                        <div className="rounded-full flex items-center justify-center mb-1.5" style={{
+                          width: 42, height: 42, background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+                        }}>
+                          <Feather size={17} color={WARM} />
+                        </div>
+                        <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>反省 Reflexión</span>
+                      </button>
+
+                      {/* Trance */}
+                      <button onClick={function() { if (!isTranceActive && !breathingActive) startTranceWithBreathing(60); }}
+                        disabled={isTranceActive || breathingActive}
+                        className={'flex flex-col items-center py-2 px-3 rounded-2xl transition-all ' + (isTranceActive || breathingActive ? 'opacity-35' : 'active:scale-95')}>
+                        <div className="rounded-full flex items-center justify-center mb-1.5" style={{
+                          width: 42, height: 42, background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+                        }}>
+                          <Wind size={17} color={WARM} />
+                        </div>
+                        <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>無心 Trance</span>
+                      </button>
+                    </div>
+
+                    <input type="file" ref={fileInputRef} onChange={handleAddIteration} className="hidden" accept="image/*" />
+                  </div>
+                )}
+
+                {/* ═══ HISTORY ═══ */}
+                {view === 'history' && (
+                  <div className="space-y-6 fade-up">
+                    <h2 className="font-mincho text-xl font-bold px-1" style={{ color: SUMI }}>道 · Michi — El Camino</h2>
+
+                    <div className="flex gap-4">
+                      {[
+                        { kanji: '作', val: projects.length, label: 'Obras' },
+                        { kanji: '筆', val: totalIterations, label: 'Trazos' },
+                      ].map(function(item, i) {
+                        return (
+                          <div key={i} className="flex-1 rounded-[22px] py-5 flex flex-col items-center" style={{
+                            background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
+                          }}>
+                            <div className="rounded-full flex items-center justify-center mb-3" style={{
+                              width: 44, height: 44, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
+                            }}>
+                              <span className="font-mincho text-lg font-bold" style={{ color: SUMI }}>{item.kanji}</span>
+                            </div>
+                            <span className="text-2xl font-extrabold" style={{ color: SUMI }}>{item.val}</span>
+                            <span className="text-[9px] font-bold uppercase mt-1" style={{ letterSpacing: '0.12em', color: WARM }}>{item.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Shu-Ha-Ri explanation */}
+                    <div className="rounded-[22px] p-5" style={{
+                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
+                    }}>
+                      <h3 className="font-mincho text-sm font-bold mb-4" style={{ color: SUMI }}>守破離 · Shu-Ha-Ri</h3>
+                      <p className="text-[11px] mb-4" style={{ color: WARM }}>
+                        El sistema japonés de maestría artística. Cada obra progresa a través de tres etapas:
+                      </p>
+                      {SHU_HA_RI.map(function(s) {
+                        return (
+                          <div key={s.romaji} className="flex gap-3 items-start mb-3">
+                            <div className="flex-shrink-0 flex items-center justify-center rounded-lg mt-0.5" style={{
+                              width: 28, height: 28, border: '1.5px solid ' + HANKO, color: HANKO,
+                            }}>
+                              <span className="font-mincho text-sm font-bold">{s.kanji}</span>
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold" style={{ color: SUMI }}>{s.romaji} — {s.meaning}</p>
+                              <p className="text-[11px]" style={{ color: WARM }}>{s.desc}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Japanese art practices */}
+                    <div className="rounded-[22px] p-5" style={{
+                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
+                    }}>
+                      <h3 className="font-mincho text-sm font-bold mb-3" style={{ color: SUMI }}>Práctica artística japonesa</h3>
+                      <div className="space-y-3 text-[11px]" style={{ color: WARM }}>
+                        <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>一</span><span><b style={{ color: SUMI }}>呼吸 Kokyū</b> — La respiración precede al trazo. Los calígrafos inhalan antes de cada pincelada.</span></div>
+                        <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>二</span><span><b style={{ color: SUMI }}>無心 Mushin</b> — Mente vacía. El estado de no-pensamiento que permite que la mano se mueva sola.</span></div>
+                        <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>三</span><span><b style={{ color: SUMI }}>見立て Mitate</b> — Ver lo que no está. El filtro de pareidolia recrea esta técnica de "ver doble".</span></div>
+                        <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>四</span><span><b style={{ color: SUMI }}>反省 Hansei</b> — Reflexión honesta post-sesión. Esencial en todos los talleres japoneses.</span></div>
+                        <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>五</span><span><b style={{ color: SUMI }}>一期一会 Ichigo Ichie</b> — Cada trazo ocurre una sola vez. No borres, acepta.</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══ SETTINGS ═══ */}
+                {view === 'settings' && (
+                  <div className="space-y-6 fade-up">
+                    <h2 className="font-mincho text-xl font-bold px-1" style={{ color: SUMI }}>設定 · Ajustes</h2>
+
+                    {/* Data Migration (Import/Export) */}
+                    <div className="rounded-[22px] p-5" style={{
+                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
+                    }}>
+                      <h3 className="font-mincho font-bold text-sm mb-4" style={{ color: SUMI }}>データ移行 · Migración de Datos</h3>
+                      
+                      <div className="space-y-4">
+                        {/* ── IMPORTAR PRIMERO ── */}
+                        <button onClick={function() { importInputRef.current.click(); }}
+                          className="w-full flex items-center justify-between p-4 rounded-2xl active:scale-[0.98] transition-all"
+                          style={{ background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
+                          <div className="flex items-center gap-3">
+                            <div className="rounded-full flex items-center justify-center" style={{ width: 36, height: 36, background: SUMI }}>
+                              <Upload size={16} color="#faf7f2" />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-xs font-bold" style={{ color: SUMI }}>読み込み Importar</p>
+                              <p className="text-[10px]" style={{ color: WARM }}>Cargar desde archivo local</p>
+                            </div>
+                          </div>
+                        </button>
+                        <input type="file" accept=".json" ref={importInputRef} onChange={handleImportData} className="hidden" />
+
+                        {/* ── EXPORTAR SEGUNDO ── */}
+                        <button onClick={handleExportData}
+                          className="w-full flex items-center justify-between p-4 rounded-2xl active:scale-[0.98] transition-all"
+                          style={{ background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
+                          <div className="flex items-center gap-3">
+                            <div className="rounded-full flex items-center justify-center" style={{ width: 36, height: 36, background: BG, boxShadow: 'inset 2px 2px 4px ' + SD + ', inset -2px -2px 4px ' + SL }}>
+                              <Download size={16} color={SUMI} />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-xs font-bold" style={{ color: SUMI }}>書き出し Exportar</p>
+                              <p className="text-[10px]" style={{ color: WARM }}>Guardar copia de seguridad</p>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Clear Data */}
+                    <div className="rounded-[22px] p-5" style={{
+                      background: BG, boxShadow: 'inset 3px 3px 8px ' + SD + ', inset -3px -3px 8px ' + SL,
+                    }}>
+                      <h3 className="font-bold text-sm mb-2 flex items-center gap-2" style={{ color: HANKO }}>
+                        <AlertTriangle size={16} /> 全消去 · Borrar todo
+                      </h3>
+                      <p className="text-[11px] mb-5" style={{ color: WARM }}>
+                        Elimina todas las obras de forma permanente. Como quemar el papel usado.
+                      </p>
+                      <button onClick={function() { setShowClearAllModal(true); }}
+                        className="w-full py-3.5 rounded-2xl text-[10px] font-bold uppercase active:scale-[0.97] transition-all"
+                        style={{ letterSpacing: '0.1em', background: BG, boxShadow: '4px 4px 8px ' + SD + ', -4px -4px 8px ' + SL, color: HANKO }}>
+                        Borrar todos los datos
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              {/* ─── Bottom Nav ─── */}
+              <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-[20px] flex items-center justify-around px-6 z-40"
+                style={{ width: '75%', maxWidth: 280, height: 60, background: BG, boxShadow: '8px 8px 18px ' + SD + ', -8px -8px 18px ' + SL }}>
+                {[
+                  { v: 'gallery', Icon: LayoutGrid },
+                  { v: 'history', Icon: History },
+                  { v: 'settings', Icon: Settings },
+                ].map(function(item) {
+                  var active = view === item.v;
+                  return (
+                    <button key={item.v} onClick={function() { setView(item.v); setIsPlaying(false); setPareidoliaMode(false); }}
+                      className="rounded-full flex items-center justify-center transition-all duration-200"
+                      style={{
+                        width: 40, height: 40, background: BG,
+                        boxShadow: active ? 'inset 2px 2px 5px ' + SD + ', inset -2px -2px 5px ' + SL : 'none',
+                        color: active ? SUMI : '#b8b0a4',
+                      }}>
+                      <item.Icon size={18} />
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* ═══ MODALS ═══ */}
+
+              {/* Delete */}
+              {showDeleteModal && (
+                <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowDeleteModal(false); }}>
+                  <div className="w-full max-w-xs p-7 rounded-[28px] text-center" onClick={function(e) { e.stopPropagation(); }}
+                    style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
+                    <div className="rounded-full mx-auto flex items-center justify-center mb-4" style={{
+                      width: 52, height: 52, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
+                    }}>
+                      <Trash2 size={20} color={HANKO} />
+                    </div>
+                    <h4 className="font-mincho font-bold mb-1" style={{ color: SUMI }}>¿Eliminar esta obra?</h4>
+                    <p className="text-[11px] mb-5" style={{ color: WARM }}>Esta acción es permanente</p>
+                    <div className="flex gap-3">
+                      <button onClick={function() { setShowDeleteModal(false); }}
+                        className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                        style={{ letterSpacing: '0.08em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: WARM }}>
+                        Cancelar
+                      </button>
+                      <button onClick={confirmDeleteProject}
+                        className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                        style={{ letterSpacing: '0.08em', background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL, color: HANKO }}>
+                        Borrar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Clear All */}
+              {showClearAllModal && (
+                <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowClearAllModal(false); }}>
+                  <div className="w-full max-w-xs p-7 rounded-[28px] text-center" onClick={function(e) { e.stopPropagation(); }}
+                    style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
+                    <div className="rounded-full mx-auto flex items-center justify-center mb-4" style={{
+                      width: 52, height: 52, background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
+                    }}>
+                      <AlertTriangle size={20} color={HANKO} />
+                    </div>
+                    <h4 className="font-mincho font-bold mb-1" style={{ color: SUMI }}>全消去？</h4>
+                    <p className="text-[11px] mb-5" style={{ color: WARM }}>Se borrarán todos los proyectos</p>
+                    <div className="flex gap-3">
+                      <button onClick={function() { setShowClearAllModal(false); }}
+                        className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                        style={{ letterSpacing: '0.08em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: WARM }}>
+                        Cancelar
+                      </button>
+                      <button onClick={confirmClearAllData}
+                        className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                        style={{ letterSpacing: '0.08em', background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL, color: HANKO }}>
+                        Confirmar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Shu-Ha-Ri Picker */}
+              {showShuHaRi && (
+                <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowShuHaRi(false); }}>
+                  <div className="w-full max-w-xs p-7 rounded-[28px]" onClick={function(e) { e.stopPropagation(); }}
+                    style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
+                    <div className="flex flex-col items-center mb-6">
+                      <Enso size={40} strokeWidth={2} color={SUMI} incomplete />
+                      <h4 className="font-mincho font-bold mt-3" style={{ color: SUMI }}>守破離 · Etapa</h4>
+                    </div>
+                    <div className="space-y-3">
+                      {SHU_HA_RI.map(function(s) {
+                        var isActive = selectedProject && selectedProject.stage === s.romaji.toLowerCase();
+                        return (
+                          <button key={s.romaji} onClick={function() {
+                            setProjects(function(prev) { return prev.map(function(p) { return p.id === selectedProjectId ? {...p, stage: s.romaji.toLowerCase()} : p; }); });
+                            setShowShuHaRi(false);
+                          }}
+                            className="w-full py-4 px-4 rounded-2xl flex items-center gap-4 transition-all duration-150 active:scale-[0.97]"
+                            style={{
+                              background: BG,
+                              boxShadow: isActive ? 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL : '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL,
+                            }}>
+                            <div className="flex-shrink-0 flex items-center justify-center rounded-lg" style={{
+                              width: 36, height: 36, border: '2px solid ' + (isActive ? HANKO : SD),
+                              color: isActive ? HANKO : WARM,
+                            }}>
+                              <span className="font-mincho text-lg font-bold">{s.kanji}</span>
+                            </div>
+                            <div className="text-left">
+                              <p className="text-xs font-bold" style={{ color: isActive ? SUMI : WARM }}>{s.romaji} — {s.meaning}</p>
+                              <p className="text-[10px]" style={{ color: WARM }}>{s.desc}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 反省 Hansei Modal */}
+              {showHansei && (
+                <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowHansei(false); }}>
+                  <div className="w-full max-w-xs p-7 rounded-[28px]" onClick={function(e) { e.stopPropagation(); }}
+                    style={{ background: BG, boxShadow: '8px 8px 20px ' + SD + ', -8px -8px 20px ' + SL }}>
+                    <div className="flex flex-col items-center mb-5">
+                      <Feather size={24} color={SUMI} />
+                      <h4 className="font-mincho font-bold mt-2" style={{ color: SUMI }}>反省 · Hansei</h4>
+                      <p className="text-[10px] mt-1 text-center" style={{ color: WARM }}>
+                        Reflexión honesta sobre este trazo. ¿Qué descubrió tu mano?
+                      </p>
+                    </div>
+                    <div className="rounded-2xl p-3 mb-4" style={{
+                      background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
+                    }}>
+                      <textarea
+                        value={hanseiText}
+                        onChange={function(e) { setHanseiText(e.target.value); }}
+                        placeholder="Escribe tu reflexión..."
+                        rows={4}
+                        className="w-full bg-transparent resize-none outline-none placeholder-gray-400"
+                        style={{ color: SUMI, fontSize: 14 }}
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={function() { setShowHansei(false); }}
+                        className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                        style={{ letterSpacing: '0.08em', background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL, color: WARM }}>
+                        Cancelar
+                      </button>
+                      <button onClick={saveHansei}
+                        className="flex-1 py-3 rounded-2xl text-[10px] font-bold uppercase active:scale-95 transition-transform"
+                        style={{ letterSpacing: '0.08em', background: SUMI, color: '#faf7f2', boxShadow: '0 4px 10px rgba(45,41,38,0.2)' }}>
+                        Guardar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const rootElement = document.getElementById('root');
+        const root = createRoot(rootElement);
+        root.render(<App />);
+    </script>
+</body>
+</html>
 
