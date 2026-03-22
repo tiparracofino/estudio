@@ -5,16 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>EvolveDraw - Mushin</title>
     
-    <!-- Fuentes Japonesas y Elegantes -->
+    <!-- Fuentes Japonesas -->
     <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet" />
     
-    <!-- Tailwind CSS por CDN -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Babel (Compila React/JSX en vivo en el navegador) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Mapa de Importaciones (Permite usar 'import' en el navegador) -->
+    <!-- Mapa de Importaciones (Para usar React directamente en el navegador) -->
     <script type="importmap">
         {
             "imports": {
@@ -25,14 +22,16 @@
         }
     </script>
 
-    <!-- Estilos Globales -->
+    <!-- Babel (El traductor de código) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Estilos de la App -->
     <style>
         * { -webkit-tap-highlight-color: transparent; } 
         body { font-family: 'Noto Sans JP', sans-serif; background-color: #e8e2d9; margin: 0; padding: 0;} 
         .font-mincho { font-family: 'Shippori Mincho', serif; } 
         .neo-scroll::-webkit-scrollbar { display: none; } 
         
-        /* Estilos del Slider Neumórfico */
         input[type='range'] { -webkit-appearance: none; appearance: none; background: transparent; } 
         input[type='range']::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: #c4bbae50; } 
         input[type='range']::-webkit-slider-thumb { 
@@ -43,7 +42,6 @@
         } 
         input[type='range']:disabled::-webkit-slider-thumb { opacity: 0.3; cursor: not-allowed; } 
         
-        /* Animaciones */
         @keyframes pulseRec { 0%,100% { opacity:1 } 50% { opacity:0.4 } } 
         .rec-pulse { animation: pulseRec 1s ease-in-out infinite; } 
         textarea { font-family: 'Shippori Mincho', serif; font-size: 14px; } 
@@ -61,7 +59,7 @@
 <body>
     <div id="root"></div>
 
-    <!-- Script Principal de la App -->
+    <!-- CÓDIGO DE LA APLICACIÓN -->
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
@@ -73,7 +71,6 @@
             Download, Upload
         } from 'lucide-react';
 
-        /* ─── IndexedDB ─── */
         var DB_NAME = "EvolveDrawDB_v6";
         var STORE_NAME = "projects";
         var initDB = function() {
@@ -90,7 +87,6 @@
           });
         };
 
-        /* ─── Washi Neumorphic Palette ─── */
         var BG = '#e8e2d9';
         var SD = '#c4bbae';
         var SL = '#faf7f2';
@@ -98,7 +94,6 @@
         var HANKO = '#b91c1c';
         var WARM = '#78716c';
 
-        /* ─── 二十四節気 (Nijūshi Sekki) — 24 Solar Terms ─── */
         var SEKKI = [
           { name: '小寒', romaji: 'Shōkan', meaning: 'Pequeño frío', month: 1, day: 5 },
           { name: '大寒', romaji: 'Daikan', meaning: 'Gran frío', month: 1, day: 20 },
@@ -148,14 +143,12 @@
           return { jp: '冬', name: 'Fuyu', es: 'Invierno' };
         }
 
-        /* ─── 守破離 Shu-Ha-Ri Stages ─── */
         var SHU_HA_RI = [
           { kanji: '守', romaji: 'Shu', meaning: 'Obedecer', desc: 'Sigue la forma. Copia sin juzgar. El ego no dibuja.' },
           { kanji: '破', romaji: 'Ha', meaning: 'Romper', desc: 'Rompe la regla. Deja que el accidente cree.' },
           { kanji: '離', romaji: 'Ri', meaning: 'Trascender', desc: 'No hay técnica. El trazo es tú.' },
         ];
 
-        /* ─── Enso SVG Component ─── */
         function Enso({ size, strokeWidth, color, className, incomplete }) {
           var s = size || 48;
           var sw = strokeWidth || 2.5;
@@ -172,7 +165,6 @@
           );
         }
 
-        /* ─── Breathing Circle (呼吸 Kokyū) ─── */
         function BreathingCircle({ active, onComplete, cycles }) {
           var totalCycles = cycles || 3;
           var [phase, setPhase] = useState('idle');
@@ -241,7 +233,6 @@
           );
         }
 
-        /* ─── Circular Timer with Enso aesthetic ─── */
         function EnsoTimer({ timeLeft, total, size }) {
           var s = size || 200;
           var radius = (s - 20) / 2;
@@ -270,7 +261,6 @@
           );
         }
 
-        /* ─── Neumorphic Toggle (washi) ─── */
         function WashiToggle({ on, onToggle, label }) {
           return (
             <button onClick={onToggle} className="flex items-center gap-3 select-none" style={{ WebkitTapHighlightColor: 'transparent' }}>
@@ -282,7 +272,6 @@
           );
         }
 
-        /* ─── Neumorphic Icon Button (washi) ─── */
         function WashiBtn({ children, onClick, active, danger, disabled, size, className }) {
           var sz = size || 44;
           return (
@@ -299,7 +288,6 @@
           );
         }
 
-        /* ─── MAIN APP ─── */
         function App() {
           var [projects, setProjects] = useState([]);
           var [isDbReady, setIsDbReady] = useState(false);
@@ -324,7 +312,6 @@
           var [showHansei, setShowHansei] = useState(false);
           var [hanseiText, setHanseiText] = useState('');
           
-          // Hanko Indicator
           var [hankoMsg, setHankoMsg] = useState({ show: false, kanji: '保存', text: 'GUARDADO' });
           var saveTimeoutRef = useRef(null);
 
@@ -338,7 +325,6 @@
           var [sekki, setSekki] = useState(getCurrentSekki());
           var [season, setSeason] = useState(getCurrentSeason());
 
-          /* ── Helper: Show Hanko Notification ── */
           var triggerHanko = function(kanji, text) {
             setHankoMsg({ show: true, kanji: kanji, text: text });
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -347,16 +333,14 @@
             }, 2000);
           };
 
-          /* ── Auto-update Sekki (Reloj Biológico) ── */
           useEffect(function() {
             var timer = setInterval(function() {
               setSekki(getCurrentSekki());
               setSeason(getCurrentSeason());
-            }, 60000 * 60); // Comprobar cada hora
+            }, 60000 * 60); 
             return function() { clearInterval(timer); };
           }, []);
 
-          /* ── Limpieza Segura del Micrófono ── */
           useEffect(function() {
             return function cleanup() {
               if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -368,7 +352,6 @@
             };
           }, [mediaRecorder]);
 
-          /* ── DB Load ── */
           useEffect(function() {
             initDB().then(function(db) {
               var tx = db.transaction(STORE_NAME, "readonly");
@@ -381,7 +364,6 @@
             }).catch(function() { setIsDbReady(true); });
           }, []);
 
-          /* ── DB Save (Con Indicador Hanko) ── */
           useEffect(function() {
             if (isDbReady && projects.length > 0) {
               initDB().then(function(db) {
@@ -401,7 +383,6 @@
             return projects.find(function(p) { return p.id === selectedProjectId; });
           }, [selectedProjectId, projects]);
 
-          /* ── Timelapse ── */
           useEffect(function() {
             if (isPlaying && selectedProject && selectedProject.iterations.length > 1) {
               playIntervalRef.current = setInterval(function() {
@@ -414,7 +395,6 @@
             return function() { clearInterval(playIntervalRef.current); };
           }, [isPlaying, selectedProject]);
 
-          /* ── Trance Timer ── */
           useEffect(function() {
             if (isTranceActive && tranceTimeLeft > 0) {
               tranceIntervalRef.current = setInterval(function() {
@@ -442,7 +422,6 @@
             clearInterval(tranceIntervalRef.current);
           };
 
-          /* ── Project CRUD ── */
           var handleCreateProject = function() {
             var np = {
               id: Date.now(),
@@ -474,7 +453,6 @@
             setShowClearAllModal(false); setView('gallery'); 
           };
 
-          /* ── Export / Import Data ── */
           var handleExportData = function() {
             try {
               var dataStr = JSON.stringify(projects);
@@ -496,7 +474,6 @@
           var handleImportData = function(e) {
             var file = e.target.files[0];
             if (!file) return;
-            
             var reader = new FileReader();
             reader.onload = function(event) {
               try {
@@ -513,7 +490,7 @@
               }
             };
             reader.readAsText(file);
-            e.target.value = null; // resetear input
+            e.target.value = null; 
           };
 
           var handleSelectProject = function(project) {
@@ -522,7 +499,6 @@
             setIsPlaying(false); setCompareMode(false); setPareidoliaMode(false); setView('detail');
           };
 
-          /* ── Add Iteration ── */
           var handleAddIteration = function(e) {
             var file = e.target.files[0];
             if (!file) return;
@@ -531,9 +507,7 @@
             reader.onload = function(event) {
               var targetProject = projects.find(function(p) { return p.id === selectedProjectId; });
               if (!targetProject) return;
-
               var newIndex = targetProject.iterations.length;
-
               var nuevaIteracion = {
                 id: Date.now(), 
                 url: event.target.result,
@@ -546,24 +520,18 @@
               setProjects(function(prevProjects) {
                 return prevProjects.map(function(p) {
                   if (p.id === selectedProjectId) {
-                    return {
-                      ...p,
-                      iterations: p.iterations.concat([nuevaIteracion])
-                    };
+                    return { ...p, iterations: p.iterations.concat([nuevaIteracion]) };
                   }
                   return p;
                 });
               });
-              
               setIterationIndex(newIndex);
               if (isTranceActive) stopTrance();
             };
-            
             reader.readAsDataURL(file);
             e.target.value = null;
           };
 
-          /* ── Audio ── */
           var startRecording = function() {
             if (!selectedProject || selectedProject.iterations.length === 0) return;
             navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
@@ -599,7 +567,6 @@
             }); });
           };
 
-          /* ── Save Hansei ── */
           var saveHansei = function() {
             setProjects(function(prev) { return prev.map(function(p) {
               if (p.id === selectedProjectId) {
@@ -612,7 +579,6 @@
             setShowHansei(false);
           };
 
-          /* ── Slider ── */
           useEffect(function() {
             var move = function(e) {
               if (!isDraggingSlider || !sliderContainerRef.current) return;
@@ -643,7 +609,6 @@
 
           return (
             <div style={{ background: BG, minHeight: '100vh', color: SUMI }} className="p-5 pb-32 relative">
-              {/* ─── INDICADOR DE GUARDADO HANKO ─── */}
               {hankoMsg.show && (
                 <div className="fixed top-6 right-6 z-50 hanko-save pointer-events-none flex flex-col items-center">
                   <div className="flex items-center justify-center rounded-md" style={{ width: 32, height: 32, border: '2px solid ' + HANKO, color: HANKO, background: 'rgba(232, 226, 217, 0.8)', backdropFilter: 'blur(4px)' }}>
@@ -653,7 +618,6 @@
                 </div>
               )}
 
-              {/* ─── HEADER ─── */}
               <header className="flex justify-between items-center mb-6 max-w-lg mx-auto pt-3">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={function() { setView('gallery'); setIsPlaying(false); }}>
                   <div className="rounded-2xl flex items-center justify-center" style={{
@@ -674,11 +638,8 @@
               </header>
 
               <main className="max-w-lg mx-auto">
-
-                {/* ═══ GALLERY ═══ */}
                 {view === 'gallery' && (
                   <div className="space-y-6 fade-up">
-                    {/* Season banner */}
                     <div className="rounded-[20px] p-4 flex items-center gap-4" style={{
                       background: BG, boxShadow: 'inset 3px 3px 6px ' + SD + ', inset -3px -3px 6px ' + SL,
                     }}>
@@ -729,7 +690,6 @@
                                 <h3 className="font-mincho text-base font-bold" style={{ color: SUMI }}>{project.title}</h3>
                                 <p className="text-[10px] mt-0.5" style={{ color: WARM }}>{project.createdAt} · {project.sekki || sekki.name}</p>
                               </div>
-                              {/* Hanko-style stage badge */}
                               <div className="flex items-center justify-center rounded-lg" style={{
                                 width: 36, height: 36, border: '2px solid ' + HANKO, color: HANKO,
                               }}>
@@ -743,10 +703,8 @@
                   </div>
                 )}
 
-                {/* ═══ DETAIL ═══ */}
                 {view === 'detail' && selectedProject && (
                   <div className="space-y-5 fade-up">
-                    {/* Top nav */}
                     <div className="flex justify-between items-center">
                       <WashiBtn onClick={function() { setView('gallery'); setIsPlaying(false); stopTrance(); }}>
                         <ChevronLeft size={18} />
@@ -773,7 +731,6 @@
                       </div>
                     </div>
 
-                    {/* Shu-Ha-Ri indicator */}
                     <div className="flex items-center gap-3 px-1">
                       <div className="flex items-center justify-center rounded-lg" style={{
                         width: 32, height: 32, border: '2px solid ' + HANKO, color: HANKO,
@@ -789,7 +746,6 @@
                       </WashiBtn>
                     </div>
 
-                    {/* ── Breathing / Trance ── */}
                     {breathingActive && (
                       <div className="rounded-[24px] py-4" style={{
                         background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL,
@@ -828,14 +784,12 @@
                       </div>
                     )}
 
-                    {/* ── Main viewer ── */}
                     <div className="rounded-[28px] p-4" style={{
                       background: BG, boxShadow: '5px 5px 12px ' + SD + ', -5px -5px 12px ' + SL,
                     }}>
                       {!hasIterations ? (
                         <div className="rounded-[20px] flex flex-col items-center justify-center p-8 text-center"
                           style={{ aspectRatio: '4/5', background: BG, boxShadow: 'inset 4px 4px 10px ' + SD + ', inset -4px -4px 10px ' + SL }}>
-
                           <div className="rounded-full flex items-center justify-center mb-2" style={{
                             width: 80, height: 80, background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
                           }}>
@@ -845,13 +799,11 @@
                               <Wind size={22} color={SUMI} />
                             </div>
                           </div>
-
                           <h3 className="font-mincho text-base font-bold mt-4 mb-1" style={{ color: SUMI }}>準備 · Junbi</h3>
                           <p className="text-xs mb-1" style={{ color: WARM }}>Preparación</p>
                           <p className="text-[11px] leading-relaxed max-w-[240px] mb-6" style={{ color: WARM }}>
                             Respira. Coge pincel y papel. La respiración 呼吸 precede al trazo, como enseñan los maestros de sumi-e.
                           </p>
-
                           <div className="flex gap-3 w-full max-w-[260px]">
                             <button onClick={function() { startTranceWithBreathing(60); }}
                               className="flex-1 py-4 rounded-2xl flex flex-col items-center active:scale-95 transition-transform"
@@ -866,7 +818,6 @@
                               <span className="text-xl font-bold font-mincho mt-0.5">30秒</span>
                             </button>
                           </div>
-
                           <button onClick={function() { fileInputRef.current.click(); }}
                             className="mt-6 text-[10px] font-medium hover:opacity-80 transition-opacity"
                             style={{ color: WARM, textDecoration: 'underline', textUnderlineOffset: '4px' }}>
@@ -909,16 +860,11 @@
                                   className="w-full h-full object-cover transition-all duration-500"
                                   style={pareidoliaMode ? { filter: 'contrast(1.8) saturate(0) brightness(0.9) sepia(0.3)' } : {}}
                                   alt="" />
-                                
-                                {/* Mejora Estética Pareidolia */}
                                 {pareidoliaMode && (
                                   <div className="absolute inset-0 opacity-20 pointer-events-none mix-blend-overlay"
-                                    style={{
-                                       backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")'
-                                    }}
+                                    style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.8%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }}
                                   />
                                 )}
-
                                 {selectedProject.iterations[iterationIndex].audio && !isRecording && (
                                   <button onClick={function() { new Audio(selectedProject.iterations[iterationIndex].audio).play(); }}
                                     className="absolute top-4 right-4 rounded-full flex items-center justify-center transition-transform hover:scale-110"
@@ -932,7 +878,6 @@
                                     見立て · Pareidolia
                                   </div>
                                 )}
-                                {/* Hansei indicator */}
                                 {selectedProject.iterations[iterationIndex].hansei && (
                                   <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-full text-[8px] font-medium flex items-center gap-1.5"
                                     style={{ background: 'rgba(250,247,242,0.5)', backdropFilter: 'blur(8px)', color: SUMI }}>
@@ -943,8 +888,6 @@
                               </>
                             )}
                           </div>
-
-                          {/* Timeline */}
                           <div className="mt-5 px-1 space-y-4">
                             <div className="flex justify-between items-center">
                               <WashiToggle on={onionSkin && !compareMode} onToggle={function() { if (!compareMode && iterationIndex > 0) setOnionSkin(!onionSkin); }} label="写し Transparencia" />
@@ -968,11 +911,9 @@
                       )}
                     </div>
 
-                    {/* ── Action bar ── */}
                     <div className="rounded-[24px] p-3 flex items-center justify-around" style={{
                       background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
                     }}>
-                      {/* Capture */}
                       <button onClick={function() { fileInputRef.current.click(); }}
                         className="flex flex-col items-center py-2 px-3 rounded-2xl active:scale-95 transition-all">
                         <div className="rounded-full flex items-center justify-center mb-1.5" style={{
@@ -983,7 +924,6 @@
                         <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>撮る Capturar</span>
                       </button>
 
-                      {/* Record */}
                       <button onMouseDown={startRecording} onMouseUp={stopRecording}
                         onTouchStart={startRecording} onTouchEnd={stopRecording} onMouseLeave={stopRecording}
                         disabled={!hasIterations}
@@ -999,7 +939,6 @@
                         </span>
                       </button>
 
-                      {/* Hansei - Reflection */}
                       <button onClick={function() {
                         if (hasIterations) {
                           setHanseiText(selectedProject.iterations[iterationIndex].hansei || '');
@@ -1015,7 +954,6 @@
                         <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>反省 Reflexión</span>
                       </button>
 
-                      {/* Trance */}
                       <button onClick={function() { if (!isTranceActive && !breathingActive) startTranceWithBreathing(60); }}
                         disabled={isTranceActive || breathingActive}
                         className={'flex flex-col items-center py-2 px-3 rounded-2xl transition-all ' + (isTranceActive || breathingActive ? 'opacity-35' : 'active:scale-95')}>
@@ -1027,16 +965,13 @@
                         <span className="text-[8px] font-bold" style={{ letterSpacing: '0.1em', color: WARM }}>無心 Trance</span>
                       </button>
                     </div>
-
                     <input type="file" ref={fileInputRef} onChange={handleAddIteration} className="hidden" accept="image/*" />
                   </div>
                 )}
 
-                {/* ═══ HISTORY ═══ */}
                 {view === 'history' && (
                   <div className="space-y-6 fade-up">
                     <h2 className="font-mincho text-xl font-bold px-1" style={{ color: SUMI }}>道 · Michi — El Camino</h2>
-
                     <div className="flex gap-4">
                       {[
                         { kanji: '作', val: projects.length, label: 'Obras' },
@@ -1057,21 +992,13 @@
                         );
                       })}
                     </div>
-
-                    {/* Shu-Ha-Ri explanation */}
-                    <div className="rounded-[22px] p-5" style={{
-                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-                    }}>
+                    <div className="rounded-[22px] p-5" style={{ background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL }}>
                       <h3 className="font-mincho text-sm font-bold mb-4" style={{ color: SUMI }}>守破離 · Shu-Ha-Ri</h3>
-                      <p className="text-[11px] mb-4" style={{ color: WARM }}>
-                        El sistema japonés de maestría artística. Cada obra progresa a través de tres etapas:
-                      </p>
+                      <p className="text-[11px] mb-4" style={{ color: WARM }}>El sistema japonés de maestría artística. Cada obra progresa a través de tres etapas:</p>
                       {SHU_HA_RI.map(function(s) {
                         return (
                           <div key={s.romaji} className="flex gap-3 items-start mb-3">
-                            <div className="flex-shrink-0 flex items-center justify-center rounded-lg mt-0.5" style={{
-                              width: 28, height: 28, border: '1.5px solid ' + HANKO, color: HANKO,
-                            }}>
+                            <div className="flex-shrink-0 flex items-center justify-center rounded-lg mt-0.5" style={{ width: 28, height: 28, border: '1.5px solid ' + HANKO, color: HANKO }}>
                               <span className="font-mincho text-sm font-bold">{s.kanji}</span>
                             </div>
                             <div>
@@ -1082,11 +1009,7 @@
                         );
                       })}
                     </div>
-
-                    {/* Japanese art practices */}
-                    <div className="rounded-[22px] p-5" style={{
-                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-                    }}>
+                    <div className="rounded-[22px] p-5" style={{ background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL }}>
                       <h3 className="font-mincho text-sm font-bold mb-3" style={{ color: SUMI }}>Práctica artística japonesa</h3>
                       <div className="space-y-3 text-[11px]" style={{ color: WARM }}>
                         <div className="flex gap-2 items-start"><span style={{ color: HANKO }}>一</span><span><b style={{ color: SUMI }}>呼吸 Kokyū</b> — La respiración precede al trazo. Los calígrafos inhalan antes de cada pincelada.</span></div>
@@ -1099,19 +1022,13 @@
                   </div>
                 )}
 
-                {/* ═══ SETTINGS ═══ */}
                 {view === 'settings' && (
                   <div className="space-y-6 fade-up">
                     <h2 className="font-mincho text-xl font-bold px-1" style={{ color: SUMI }}>設定 · Ajustes</h2>
 
-                    {/* Data Migration (Import/Export) */}
-                    <div className="rounded-[22px] p-5" style={{
-                      background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL,
-                    }}>
+                    <div className="rounded-[22px] p-5" style={{ background: BG, boxShadow: '4px 4px 10px ' + SD + ', -4px -4px 10px ' + SL }}>
                       <h3 className="font-mincho font-bold text-sm mb-4" style={{ color: SUMI }}>データ移行 · Migración de Datos</h3>
-                      
                       <div className="space-y-4">
-                        {/* ── IMPORTAR PRIMERO ── */}
                         <button onClick={function() { importInputRef.current.click(); }}
                           className="w-full flex items-center justify-between p-4 rounded-2xl active:scale-[0.98] transition-all"
                           style={{ background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
@@ -1127,7 +1044,6 @@
                         </button>
                         <input type="file" accept=".json" ref={importInputRef} onChange={handleImportData} className="hidden" />
 
-                        {/* ── EXPORTAR SEGUNDO ── */}
                         <button onClick={handleExportData}
                           className="w-full flex items-center justify-between p-4 rounded-2xl active:scale-[0.98] transition-all"
                           style={{ background: BG, boxShadow: '3px 3px 6px ' + SD + ', -3px -3px 6px ' + SL }}>
@@ -1144,10 +1060,7 @@
                       </div>
                     </div>
 
-                    {/* Clear Data */}
-                    <div className="rounded-[22px] p-5" style={{
-                      background: BG, boxShadow: 'inset 3px 3px 8px ' + SD + ', inset -3px -3px 8px ' + SL,
-                    }}>
+                    <div className="rounded-[22px] p-5" style={{ background: BG, boxShadow: 'inset 3px 3px 8px ' + SD + ', inset -3px -3px 8px ' + SL }}>
                       <h3 className="font-bold text-sm mb-2 flex items-center gap-2" style={{ color: HANKO }}>
                         <AlertTriangle size={16} /> 全消去 · Borrar todo
                       </h3>
@@ -1164,7 +1077,6 @@
                 )}
               </main>
 
-              {/* ─── Bottom Nav ─── */}
               <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-[20px] flex items-center justify-around px-6 z-40"
                 style={{ width: '75%', maxWidth: 280, height: 60, background: BG, boxShadow: '8px 8px 18px ' + SD + ', -8px -8px 18px ' + SL }}>
                 {[
@@ -1187,9 +1099,6 @@
                 })}
               </nav>
 
-              {/* ═══ MODALS ═══ */}
-
-              {/* Delete */}
               {showDeleteModal && (
                 <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowDeleteModal(false); }}>
                   <div className="w-full max-w-xs p-7 rounded-[28px] text-center" onClick={function(e) { e.stopPropagation(); }}
@@ -1217,7 +1126,6 @@
                 </div>
               )}
 
-              {/* Clear All */}
               {showClearAllModal && (
                 <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowClearAllModal(false); }}>
                   <div className="w-full max-w-xs p-7 rounded-[28px] text-center" onClick={function(e) { e.stopPropagation(); }}
@@ -1245,7 +1153,6 @@
                 </div>
               )}
 
-              {/* Shu-Ha-Ri Picker */}
               {showShuHaRi && (
                 <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowShuHaRi(false); }}>
                   <div className="w-full max-w-xs p-7 rounded-[28px]" onClick={function(e) { e.stopPropagation(); }}
@@ -1285,7 +1192,6 @@
                 </div>
               )}
 
-              {/* 反省 Hansei Modal */}
               {showHansei && (
                 <div className="fixed inset-0 bg-black/25 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={function() { setShowHansei(false); }}>
                   <div className="w-full max-w-xs p-7 rounded-[28px]" onClick={function(e) { e.stopPropagation(); }}
@@ -1334,4 +1240,5 @@
     </script>
 </body>
 </html>
+
 
